@@ -1,0 +1,51 @@
+# Input: keys held down now (by raw code) and the joystick. Asked in each frame; no window or events needed.
+#
+#   if key(KEY_ESC) ...
+#   if joy_up(1) ...                 # Dash's joy_* (port 1, the joystick port)
+#   dx = axis_x(1)                   # -1, 0 or 1 from the joystick or the arrow keys
+#   if fire(1) ...                   # fire button, or space
+
+const KEY_ESC = 0x45
+const KEY_SPACE = 0x40
+const KEY_RETURN = 0x44
+const KEY_UP = 0x4C
+const KEY_DOWN = 0x4D
+const KEY_RIGHT = 0x4E
+const KEY_LEFT = 0x4F
+const KEY_W = 0x11
+const KEY_A = 0x20
+const KEY_S = 0x21
+const KEY_D = 0x22
+const KEY_P = 0x19
+const KEY_Q = 0x10
+const KEY_F1 = 0x50
+
+func key(code: Int) -> Bool
+    return key_down(code)
+end
+
+# Left and right: the joystick of that port, or the arrow keys
+func axis_x(port: Int) -> Int
+    if joy_left(port) or key_down(KEY_LEFT)
+        return -1
+    end
+    if joy_right(port) or key_down(KEY_RIGHT)
+        return 1
+    end
+    return 0
+end
+
+# Up and down
+func axis_y(port: Int) -> Int
+    if joy_up(port) or key_down(KEY_UP)
+        return -1
+    end
+    if joy_down(port) or key_down(KEY_DOWN)
+        return 1
+    end
+    return 0
+end
+
+func fire(port: Int) -> Bool
+    return joy_fire(port) or key_down(KEY_SPACE)
+end

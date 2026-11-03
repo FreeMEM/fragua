@@ -1,0 +1,38 @@
+# Prueba de Rect (src/rect.dash), sin pantalla. Acaba con "TODO BIEN".
+
+import "../src/rect.dash"
+
+var fallos: Int = 0
+
+func ver(paso: String, cierto: Bool)
+    if cierto
+        Print "bien: " + paso
+    else
+        Print "FALLO: " + paso
+        fallos = fallos + 1
+    end
+end
+
+Main
+    a = Rect(10, 10, 20, 10)
+    b = Rect(25, 15, 10, 10)
+    ver("lados", a.right() == 30 and a.bottom() == 20 and a.center_x() == 20 and a.center_y() == 15)
+    ver("chocan", a.collides(b) and b.collides(a))
+    ver("tocarse no es chocar", not a.collides(Rect(30, 10, 5, 5)) and not a.collides(Rect(10, 20, 5, 5)))
+    ver("contiene", a.contains(10, 10) and a.contains(29, 19) and not a.contains(30, 19))
+    i = a.intersection(b)
+    ver("intersección", i.x == 25 and i.y == 15 and i.w == 5 and i.h == 5)
+    n = a.intersection(Rect(100, 100, 5, 5))
+    ver("sin intersección: vacía", n.w == 0 and n.h == 0)
+    u = a.union(b)
+    ver("unión", u.x == 10 and u.y == 10 and u.w == 25 and u.h == 15)
+    c = a.copy()
+    c.move(5, -3)
+    ver("mover la copia no toca el original", c.x == 15 and c.y == 7 and a.x == 10)
+    c.move_to(-4, 300)
+    c.clamp(Rect(0, 0, 320, 256))
+    ver("volver dentro", c.x == 0 and c.y == 246)
+    if fallos == 0
+        Print "TODO BIEN"
+    end
+end

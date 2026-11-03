@@ -1,0 +1,144 @@
+# Screen: the game's own screen, double buffered when it can be (AmigaOS 3.0 or later): you draw on the hidden
+# buffer and present() shows it in the next vertical blank.
+#
+#   s = screen_open(320, 256, 5, "Pong")   # nil if it cannot open
+#   s.color(1, 255, 255, 255)              # palette colour 1 (8 bits each)
+#   s.rect(x, y, w, h, pen)                # a filled rectangle
+#   s.text(x, y, "Score", pen)
+#   s.present()                            # show what was drawn (and wait for the vertical blank)
+#   s.close()
+#
+# The background. Clearing the whole screen each frame costs more than a frame (320 x 256 with 5 planes: 37 ms on
+# an A1200 and on an A500, measured in bench/costes.dash), so games keep a background and put back only the bits
+# where the sprites were: each sprite remembers where it was drawn in each buffer (Sprite.erase, Group.erase).
+#   s.background(pen)                      # a background of one colour
+#   s.background_start() ... gfx_* ... s.background_end()   # draw on the background (the net, the score)
+#   s.restore(x, y, w, h)                  # put back a bit of the background
+# After a background change, the next frames of each buffer copy the whole background (begin(), at the start of
+# each frame, does it).
+
+const FRAGUA_BACKGROUND = 30       # the bitmap of the background
+
+struct Screen
+    width: Int
+    height: Int
+    depth: Int
+    double: Bool          # double buffered (present flips the buffers)
+    back: Int = 0         # the buffer being drawn: 0 or 1
+    has_background: Bool = false
+    pending: Int = 0      # buffers that still have to copy the whole background
+
+    func color(i: Int, r: Int, g: Int, b: Int)
+        gfx_rgb8(i, r, g, b)
+    end
+
+    # The palette of a picture (an IFF from Forja) from colour first on: how many colours it set
+    func palette(file: String, first: Int) -> Int
+        return bob_load_colors(file, first)
+    end
+
+    # The whole screen with pen (it costs more than a frame: better a background)
+    func clear(pen: Int)
+        gfx_pen(pen)
+        gfx_rect(0, 0, self.width - 1, self.height - 1)
+    end
+
+    func rect(x: Int, y: Int, w: Int, h: Int, pen: Int)
+        if w > 0 and h > 0
+            gfx_pen(pen)
+            gfx_rect(x, y, x + w - 1, y + h - 1)
+        end
+    end
+
+    func text(x: Int, y: Int, t: String, pen: Int)
+        gfx_pen(pen)
+        gfx_text_at(x, y + font_baseline(), t)
+    end
+
+    func background(pen: Int)
+        if not self.has_background
+            if not bitmap_create(FRAGUA_BACKGROUND, self.width, self.height, self.depth)
+                return
+            end
+            self.has_background = true
+        end
+        bitmap_draw_to(FRAGUA_BACKGROUND)
+        gfx_pen(pen)
+        gfx_rect(0, 0, self.width - 1, self.height - 1)
+        bitmap_draw_screen()
+        self.pending = 2
+    end
+
+    func background_start()
+        if not self.has_background
+            self.background(0)
+        end
+        bitmap_draw_to(FRAGUA_BACKGROUND)
+    end
+
+    func background_end()
+        bitmap_draw_screen()
+        self.pending = 2
+    end
+
+    # At the start of each frame: the whole background, if it changed and this buffer does not have it yet
+    func begin()
+        if self.pending > 0 and self.has_background
+            bitmap_blit(FRAGUA_BACKGROUND, 0, 0, self.width, self.height, 0, 0)
+            self.pending = self.pending - 1
+            if not self.double
+                self.pending = 0
+            end
+        end
+    end
+
+    func restore(x: Int, y: Int, w: Int, h: Int)
+        if not self.has_background
+            return
+        end
+        if x < 0
+            w = w + x
+            x = 0
+        end
+        if y < 0
+            h = h + y
+            y = 0
+        end
+        if x + w > self.width
+            w = self.width - x
+        end
+        if y + h > self.height
+            h = self.height - y
+        end
+        if w > 0 and h > 0
+            bitmap_blit(FRAGUA_BACKGROUND, x, y, w, h, x, y)
+        end
+    end
+
+    func present()
+        if self.double
+            screen_flip()
+            self.back = 1 - self.back
+        else
+            wait_vblank()
+        end
+    end
+
+    func close()
+        if self.has_background
+            bitmap_free(FRAGUA_BACKGROUND)
+            self.has_background = false
+        end
+        screen_close()
+    end
+end
+
+var fragua_screen: Screen = nil    # the open screen (sprites erase themselves on it)
+
+func screen_open(width: Int, height: Int, depth: Int, title: String) -> Screen
+    if not screen_open_custom(width, height, depth, title)
+        return nil
+    end
+    fragua_screen = Screen(width, height, depth, screen_double_buffer())
+    return fragua_screen
+end

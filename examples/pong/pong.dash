@@ -1,0 +1,147 @@
+# Pong with Fragua (layer 1). The left paddle: W and S, or the joystick in port 1; the right one plays by itself.
+# Esc quits. With ENV:FRAGUA_DEMO set, both paddles play by themselves and it quits after 500 frames, printing the
+# score and the frames lost (for the tests).
+
+import "../../fragua.dash"
+
+const W = 320
+const H = 256
+const PADDLE_H = 32
+
+var left_score: Int = 0
+var right_score: Int = 0
+
+# A paddle that follows the ball, at most speed pixels a frame
+func follow(p: Sprite, ball: Sprite, speed: Int)
+    target = ball.rect.center_y() - p.rect.h / 2
+    if target < p.rect.y - speed
+        p.rect.y = p.rect.y - speed
+    elif target > p.rect.y + speed
+        p.rect.y = p.rect.y + speed
+    else
+        p.rect.y = target
+    end
+end
+
+# The background: the net, the line and the score (drawn again when the score changes)
+func draw_background(s: Screen)
+    s.background(0)
+    s.background_start()
+    s.rect(W / 2 - 1, 16, 2, H - 16, 2)
+    s.rect(0, 14, W, 2, 2)
+    s.text(W / 2 - 40, 2, "#{left_score}", 1)
+    s.text(W / 2 + 32, 2, "#{right_score}", 1)
+    s.background_end()
+end
+
+func serve(ball: Sprite, to_left: Bool)
+    ball.rect.move_to(W / 2 - 3, H / 2 - 3)
+    ball.vx = 3
+    if to_left
+        ball.vx = -3
+    end
+    ball.vy = 2
+end
+
+Main
+    demo = env_get("FRAGUA_DEMO") != ""
+    s = screen_open(W, H, 3, "Pong")
+    if s == nil
+        Print "Pong: the screen does not open"
+    else
+        s.color(0, 0, 0, 32)
+        s.color(1, 240, 240, 240)
+        s.color(2, 90, 90, 120)
+        paddle_img = image_new(6, PADDLE_H, 1, 3)
+        paddle_img.paint_start()
+        gfx_pen(1)
+        gfx_rect(0, 0, 5, PADDLE_H - 1)
+        paddle_img.paint_end()
+        ball_img = image_new(6, 6, 1, 3)
+        ball_img.paint_start()
+        gfx_pen(1)
+        gfx_rect(1, 0, 4, 5)
+        gfx_rect(0, 1, 5, 4)
+        ball_img.paint_end()
+        left = sprite_new(paddle_img, 12, H / 2 - PADDLE_H / 2)
+        right = sprite_new(paddle_img, W - 18, H / 2 - PADDLE_H / 2)
+        ball = sprite_new(ball_img, 0, 0)
+        serve(ball, false)
+        paddles = group_new()
+        paddles.add(left)
+        paddles.add(right)
+        area = Rect(0, 16, W, H - 16)
+        draw_background(s)
+        clock = clock_new(50)
+        work = 0              # ms spent in each frame before present (for the demo's report)
+        worst = 0
+        while not key(KEY_ESC) and not (demo and clock.frames >= 500)
+            n = clock.tick()
+            t0 = time_ms()
+            # this buffer: the whole background if it changed, and the background where the sprites were
+            s.begin()
+            paddles.erase()
+            ball.erase()
+            score = left_score * 1000 + right_score
+            while n > 0
+                # the player, or the machine in the demo
+                if demo
+                    follow(left, ball, 3)
+                else
+                    if key(KEY_W) or joy_up(1)
+                        left.rect.y = left.rect.y - 4
+                    end
+                    if key(KEY_S) or joy_down(1)
+                        left.rect.y = left.rect.y + 4
+                    end
+                end
+                follow(right, ball, 3)
+                left.rect.clamp(area)
+                right.rect.clamp(area)
+                ball.move()
+                if ball.rect.y < area.y or ball.rect.bottom() > area.bottom()
+                    ball.vy = -ball.vy
+                    ball.rect.clamp(area)
+                end
+                hits = paddles.colliding(ball)
+                if hits.length > 0
+                    p = hits[0]
+                    ball.vx = -ball.vx
+                    # where it hits the paddle bends it
+                    ball.vy = (ball.rect.center_y() - p.rect.center_y()) / 5
+                    if ball.vx > 0
+                        ball.rect.x = p.rect.right()
+                    else
+                        ball.rect.x = p.rect.x - ball.rect.w
+                    end
+                end
+                if ball.rect.right() < 0
+                    right_score = right_score + 1
+                    serve(ball, false)
+                elif ball.rect.x > W
+                    left_score = left_score + 1
+                    serve(ball, true)
+                end
+                n = n - 1
+            end
+            if left_score * 1000 + right_score != score
+                draw_background(s)
+                s.begin()
+            end
+            paddles.draw()
+            ball.draw()
+            t = time_ms() - t0
+            work = work + t
+            if t > worst
+                worst = t
+            end
+            s.present()
+        end
+        if demo
+            Print "pong: #{clock.frames} frames, #{left_score} - #{right_score}, lost #{clock.lost}, work #{work / (clock.frames - clock.lost)} ms a frame (at most #{worst})"
+        end
+        paddle_img.free()
+        ball_img.free()
+        s.close()
+    end
+end

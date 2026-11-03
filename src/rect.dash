@@ -1,0 +1,116 @@
+# Rect: a rectangle in pixels (x, y, width, height), with collisions. Plain Dash, no builtins.
+#
+#   r = Rect(10, 20, 16, 16)
+#   r.collides(other)      # they overlap (touching edges do not)
+#   r.contains(px, py)
+#   r.move(dx, dy)
+#   r.clamp(area)          # back inside area, if it went out
+#   c = r.intersection(o)  # the common part (width or height 0 if none)
+#   u = r.union(o)         # the smallest rectangle with both
+
+struct Rect
+    x: Int
+    y: Int
+    w: Int
+    h: Int
+
+    func right() -> Int
+        return self.x + self.w
+    end
+
+    func bottom() -> Int
+        return self.y + self.h
+    end
+
+    func center_x() -> Int
+        return self.x + self.w / 2
+    end
+
+    func center_y() -> Int
+        return self.y + self.h / 2
+    end
+
+    func collides(o: Rect) -> Bool
+        return self.x < o.x + o.w and o.x < self.x + self.w and self.y < o.y + o.h and o.y < self.y + self.h
+    end
+
+    func contains(px: Int, py: Int) -> Bool
+        return px >= self.x and py >= self.y and px < self.x + self.w and py < self.y + self.h
+    end
+
+    func move(dx: Int, dy: Int)
+        self.x = self.x + dx
+        self.y = self.y + dy
+    end
+
+    func move_to(x: Int, y: Int)
+        self.x = x
+        self.y = y
+    end
+
+    # Back inside area (if it is bigger than area, its top left corner goes to area's)
+    func clamp(area: Rect)
+        if self.x + self.w > area.x + area.w
+            self.x = area.x + area.w - self.w
+        end
+        if self.y + self.h > area.y + area.h
+            self.y = area.y + area.h - self.h
+        end
+        if self.x < area.x
+            self.x = area.x
+        end
+        if self.y < area.y
+            self.y = area.y
+        end
+    end
+
+    func intersection(o: Rect) -> Rect
+        x1 = self.x
+        if o.x > x1
+            x1 = o.x
+        end
+        y1 = self.y
+        if o.y > y1
+            y1 = o.y
+        end
+        x2 = self.x + self.w
+        if o.x + o.w < x2
+            x2 = o.x + o.w
+        end
+        y2 = self.y + self.h
+        if o.y + o.h < y2
+            y2 = o.y + o.h
+        end
+        if x2 < x1
+            x2 = x1
+        end
+        if y2 < y1
+            y2 = y1
+        end
+        return Rect(x1, y1, x2 - x1, y2 - y1)
+    end
+
+    func union(o: Rect) -> Rect
+        x1 = self.x
+        if o.x < x1
+            x1 = o.x
+        end
+        y1 = self.y
+        if o.y < y1
+            y1 = o.y
+        end
+        x2 = self.x + self.w
+        if o.x + o.w > x2
+            x2 = o.x + o.w
+        end
+        y2 = self.y + self.h
+        if o.y + o.h > y2
+            y2 = o.y + o.h
+        end
+        return Rect(x1, y1, x2 - x1, y2 - y1)
+    end
+
+    func copy() -> Rect
+        return Rect(self.x, self.y, self.w, self.h)
+    end
+end

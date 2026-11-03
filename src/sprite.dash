@@ -1,0 +1,148 @@
+# Sprite and Group, as in pygame: a sprite is an image with a rectangle and a frame; a group draws all its sprites
+# and finds collisions.
+#
+#   s = sprite_new(img, x, y)          # its rect is as big as a frame of img
+#   s.vx = 2                           # speed in pixels a frame (move() adds it)
+#   s.move()
+#   s.draw()
+#   g = group_new()
+#   g.add(s)
+#   g.draw()
+#   hits = g.colliding(player)         # the sprites of g that overlap player (player itself left out)
+#   g.remove_dead()                    # out go the sprites killed (s.kill()) once they are off both buffers
+#
+# With a background on the screen (Screen.background), each frame starts with g.erase(): every sprite puts back
+# the background where it was drawn in this buffer, two frames ago with double buffering.
+
+import "rect.dash"
+import "image.dash"
+import "screen.dash"
+
+struct Sprite
+    image: Image
+    rect: Rect
+    frame: Int
+    vx: Int
+    vy: Int
+    visible: Bool
+    alive: Bool
+    drawn0: Bool = false  # where it was drawn in buffer 0 and in buffer 1 (to erase it)
+    x0: Int = 0
+    y0: Int = 0
+    drawn1: Bool = false
+    x1: Int = 0
+    y1: Int = 0
+
+    func move()
+        self.rect.x = self.rect.x + self.vx
+        self.rect.y = self.rect.y + self.vy
+    end
+
+    func draw()
+        if self.visible and self.image != nil
+            self.image.draw(self.rect.x, self.rect.y, self.frame)
+            b = 0
+            if fragua_screen != nil
+                b = fragua_screen.back
+            end
+            if b == 0
+                self.drawn0 = true
+                self.x0 = self.rect.x
+                self.y0 = self.rect.y
+            else
+                self.drawn1 = true
+                self.x1 = self.rect.x
+                self.y1 = self.rect.y
+            end
+        end
+    end
+
+    # Puts back the screen's background where it was drawn in the buffer being drawn now
+    func erase()
+        if fragua_screen == nil or self.image == nil
+            return
+        end
+        if fragua_screen.back == 0 and self.drawn0
+            fragua_screen.restore(self.x0, self.y0, self.image.width, self.image.height)
+            self.drawn0 = false
+        elif fragua_screen.back == 1 and self.drawn1
+            fragua_screen.restore(self.x1, self.y1, self.image.width, self.image.height)
+            self.drawn1 = false
+        end
+    end
+
+    # It stops being drawn; the group drops it once it is off both buffers
+    func kill()
+        self.alive = false
+        self.visible = false
+    end
+
+    func collides(o: Sprite) -> Bool
+        return self.rect.collides(o.rect)
+    end
+end
+
+func sprite_new(img: Image, x: Int, y: Int) -> Sprite
+    w = 0
+    h = 0
+    if img != nil
+        w = img.width
+        h = img.height
+    end
+    return Sprite(img, Rect(x, y, w, h), 0, 0, 0, true, true)
+end
+
+struct Group
+    sprites: [Sprite]
+
+    func add(s: Sprite)
+        self.sprites.push(s)
+    end
+
+    func length() -> Int
+        return self.sprites.length
+    end
+
+    func move()
+        for s in self.sprites
+            s.move()
+        end
+    end
+
+    func draw()
+        for s in self.sprites
+            s.draw()
+        end
+    end
+
+    func erase()
+        for s in self.sprites
+            s.erase()
+        end
+    end
+
+    func colliding(o: Sprite) -> [Sprite]
+        var hits: [Sprite] = []
+        for s in self.sprites
+            if s != o and s.alive and s.rect.collides(o.rect)
+                hits.push(s)
+            end
+        end
+        return hits
+    end
+
+    func remove_dead()
+        i = self.sprites.length - 1
+        while i >= 0
+            if not self.sprites[i].alive and not self.sprites[i].drawn0 and not self.sprites[i].drawn1
+                self.sprites.remove(i)
+            end
+            i = i - 1
+        end
+    end
+end
+
+func group_new() -> Group
+    var l: [Sprite] = []
+    return Group(l)
+end
