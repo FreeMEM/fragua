@@ -175,7 +175,9 @@ Por orden de lo que pesa para Fragua:
 - Rendimiento: nodos quietos lejos de la cámara (`set_active_margin`), áreas una vez por fotograma con cajas en
   caché, el mapa de choques en números del árbol, animaciones y entrada a petición, `set_frame_rate(25)` con la
   física a 50.
-- Sin hacer: H2 (plantilla de juego), scroll suave (Dash), AnimationPlayer, luces, guardar partida, los
+- H2 empezado: `plantilla/plataformas/` (escenas, recursos y un `main.dash` con los scripts). Faltan plantillas
+  de otros géneros (cenital, matamarcianos, puzle, isométrico).
+- Sin hacer: scroll suave (Dash), AnimationPlayer, luces, guardar partida, los
   comportamientos que pide la UX (J). Una rareza sin resolver: en 2 de unas 6 ejecuciones del isométrico la
   captura salió con basura (sin errores de `--memcheck` y el juego acaba bien); puede ser la captura (`shot.c`)
   con doble búfer o algo pintado fuera: hay que mirarlo.

@@ -19,7 +19,7 @@ def mal(msg):
     fallos += 1
 
 
-for ruta in sorted(glob.glob(os.path.join(AQUI, "..", "examples", "*", "*.escena"))):
+for ruta in sorted(glob.glob(os.path.join(AQUI, "..", "examples", "*", "*.escena")) + glob.glob(os.path.join(AQUI, "..", "plantilla", "*", "*.escena"))):
     gen = subprocess.run([sys.executable, ESCENA, "--stdout", ruta], capture_output=True, text=True)
     hay = open(os.path.splitext(ruta)[0] + ".dash", encoding="utf-8").read()
     if gen.returncode != 0 or gen.stdout != hay:

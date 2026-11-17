@@ -1,0 +1,16 @@
+{
+  "fragua": 1,
+  "name": "Enemy",
+  "root": {
+    "type": "Body2D", "name": "Enemy",
+    "props": {"layer": 2},
+    "groups": ["enemies"],
+    "script": "Enemy",
+    "behaviors": [{"type": "Patrol", "props": {"speed": 0.75}}],
+    "children": [
+      {"type": "AnimatedSprite2D", "name": "Sprite",
+       "props": {"image": "enemy.iff", "animations": {"walk": {"frames": [0, 1], "speed": 8}, "walk_left": {"frames": [2, 3], "speed": 8}}}},
+      {"type": "CollisionShape2D", "name": "Shape", "props": {"rect": [1, 4, 14, 12]}}
+    ]
+  }
+}

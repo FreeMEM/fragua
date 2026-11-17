@@ -1,0 +1,76 @@
+# A platform game to start from (Fragua's template): the scenes (*.escena) make the level, the player, the
+# enemies and the coins; Forja's scene editor changes them, and tools/escena.py (or Forja) writes their .dash.
+# Your code goes here: the scripts the scenes name (Player, Enemy) and whatever else the game needs.
+
+import "../../fragua.dash"
+import "level1.dash"
+
+# The player: Platformer and Health do the moving and the life (player.escena); this sends it back to the start
+# when it falls out of the world or onto spikes
+struct Player: Script
+    falls: Int = 0
+
+    func ready(n: Node)
+    end
+
+    func process(n: Node, delta: Int)
+        if n.y > 260 or n.touches_tile(TILE_DAMAGE)
+            self.falls = self.falls + 1
+            send_signal(n, "damage", n, 1)
+            n.set_pos(32, 160)
+            n.body.vy = 0
+        end
+    end
+
+    func physics_process(n: Node)
+    end
+
+    func on_signal(n: Node, name: String, from: Node, data: Int)
+    end
+end
+
+# An enemy: Patrol walks it; falling on it kills it, touching it hurts
+struct Enemy: Script
+    points: Int = 50
+
+    func ready(n: Node)
+    end
+
+    func process(n: Node, delta: Int)
+    end
+
+    func physics_process(n: Node)
+        for p in get_nodes_in_group("player")
+            if n.overlaps(p)
+                fragua_box(n)
+                top = fragua_by
+                fragua_box(p)
+                if p.body.vy > 0 and fragua_by + fragua_bh <= top + 6
+                    p.body.vy = Fixed(-4)
+                    game_add("score", self.points)
+                    n.queue_free()
+                else
+                    send_signal(p, "damage", n, 1)
+                end
+            end
+        end
+    end
+
+    func on_signal(n: Node, name: String, from: Node, data: Int)
+    end
+end
+
+Main
+    s = open_screen(320, 256, 5, "My game")
+    if s == nil
+        Print "The screen does not open"
+    else
+        s.palette("tiles.iff", 0)
+        set_view(0, 16, 320, 240)
+        set_background_color(3)
+        set_hud_color(0)
+        set_frame_rate(25)
+        run(scene_level1())
+        close_screen(s)
+    end
+end
