@@ -114,6 +114,11 @@ func tile_at(wx: Int, wy: Int) -> Int
     return fragua_cm(fragua_cm_col(wx), fragua_cm_row(wy))
 end
 
+# The background is drawn again in the next frame (maps, color rects, labels): after changing them by hand
+func redraw_background()
+    fragua_tree.bg_dirty = true
+end
+
 # Where the world shows on the screen (the rest stays for ui nodes: a score bar)
 func set_view(x: Int, y: Int, w: Int, h: Int)
     t = fragua_tree
@@ -297,6 +302,18 @@ func fragua_background()
     for n in t.maps
         if fragua_shown(n)
             fragua_draw_map(n)
+        end
+    end
+    for n in t.rects
+        if fragua_shown(n) and n.color_rect.w > 0 and n.color_rect.h > 0
+            x = n.global_x()
+            y = n.global_y()
+            if not n.ui
+                x = screen_x(x)
+                y = screen_y(y)
+            end
+            gfx_pen(n.color_rect.pen)
+            gfx_rect(x, y, x + n.color_rect.w - 1, y + n.color_rect.h - 1)
         end
     end
     bitmap_draw_screen()

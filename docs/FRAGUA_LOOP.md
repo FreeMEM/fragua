@@ -123,4 +123,7 @@ Ver la sección del mismo nombre al final de la bitácora.
   - `./dash`: `step` no vale como nombre de parámetro (lo toma por el `step` de `for`); `--gcc` sí lo deja.
   - Los builtins nuevos `image_load` y `screen_open` chocaban con la fase 1 de Fragua: ahora son `load_image` y
     `open_screen` (y, por coherencia, `new_image`, `new_clock`, `new_sprite`, `new_group`).
+  - `./dash --gcc`: una `const` del programa llamada como una variable del runtime C (`const W = 320`, `const H`)
+    sale como `#define W 320` y rompe el C del runtime (`_dash_tilemap_draw` usa `W` y `H`). El Pong con nodos
+    usa `WORLD_W` y `WORLD_H`.
   - No se puede indexar lo que devuelve una llamada: `f()[0]` es error de sintaxis en los dos caminos.

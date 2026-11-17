@@ -40,6 +40,7 @@ const LABEL = 9
 const TIMER = 10
 const AUDIO = 11
 const PARTICLES2D = 12
+const COLOR_RECT = 13
 
 const SHAPE_RECT = 0
 const SHAPE_CIRCLE = 1
@@ -135,6 +136,12 @@ struct LabelData
     dirty: Bool = true
 end
 
+struct ColorRectData
+    w: Int = 0
+    h: Int = 0
+    pen: Int = 1
+end
+
 struct TimerData
     wait: Int = 50                # video frames (50 a second in PAL)
     left: Int = 0
@@ -207,6 +214,7 @@ struct Node
     timer: TimerData = nil
     audio: AudioData = nil
     particles: ParticlesData = nil
+    color_rect: ColorRectData = nil
 
     # --- the tree ---
 
@@ -585,6 +593,15 @@ func new_label(name: String, x: Int, y: Int, text: String, pen: Int, bg: Int) ->
     n.set_pos(x, y)
     n.ui = true
     n.label = LabelData(text, pen, bg)
+    return n
+end
+
+# A rectangle of one colour painted on the background (cheap: drawn again only when the background is): a net, a
+# panel, a frame. After changing it, redraw_background().
+func new_color_rect(name: String, x: Int, y: Int, w: Int, h: Int, pen: Int) -> Node
+    n = Node(name, COLOR_RECT)
+    n.set_pos(x, y)
+    n.color_rect = ColorRectData(w, h, pen)
     return n
 end
 

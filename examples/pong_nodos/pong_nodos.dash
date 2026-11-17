@@ -1,0 +1,149 @@
+# Pong with Fragua's nodes (layer 2): the ball is a body with the BounceEdges behaviour that stops at the paddles
+# (static bodies), the net a ColorRect and the score two labels tied to game variables. WORLD_W and S or the joystick
+# move the left paddle; the right one plays by itself. Esc quits. With ENV:FRAGUA_DEMO both play by themselves for
+# 500 frames and it prints the score and what it measured (for the tests).
+# Compare with examples/pong/pong.dash, the same game with layer 1.
+
+import "../../fragua.dash"
+
+const WORLD_W = 320
+const WORLD_H = 240                 # the world, under a bar of 16 lines for the score
+
+var demo: Bool = false
+
+# A paddle: the player's (the actions up and down) or the machine's (follows the ball)
+struct Paddle: Script
+    ai: Bool = false
+
+    func ready(n: Node)
+    end
+
+    func process(n: Node, delta: Int)
+    end
+
+    func physics_process(n: Node)
+        dy = 0
+        if self.ai or demo
+            ball = n.get_node("/Ball")
+            target = ball.y - 13
+            if target < n.y - 3
+                dy = -3
+            elif target > n.y + 3
+                dy = 3
+            end
+        else
+            dy = action_axis("up", "down") * 4
+        end
+        n.y = n.y + dy
+        if n.y < 0
+            n.y = 0
+        elif n.y > WORLD_H - 32
+            n.y = WORLD_H - 32
+        end
+    end
+
+    func on_signal(n: Node, name: String, from: Node, data: Int)
+    end
+end
+
+# The ball: hitting a paddle bends it by where it hit; out at the sides, a point and a new serve
+struct Ball: Script
+    move: BounceEdges = nil
+
+    func ready(n: Node)
+        self.serve(n, 1)
+    end
+
+    func serve(n: Node, dir: Int)
+        n.set_pos(WORLD_W / 2 - 3, WORLD_H / 2 - 3)
+        self.move.vx = Fixed(3) * dir
+        self.move.vy = Fixed(2)
+    end
+
+    func process(n: Node, delta: Int)
+    end
+
+    func physics_process(n: Node)
+        if n.x < -8
+            game_add("right", 1)
+            self.serve(n, 1)
+        elif n.x > WORLD_W + 2
+            game_add("left", 1)
+            self.serve(n, -1)
+        end
+    end
+
+    func on_signal(n: Node, name: String, from: Node, data: Int)
+        if name == "collided"
+            p = node_by_id(data)
+            self.move.vy = Fixed(n.y + 3 - (p.y + 16)) / 5
+        end
+    end
+end
+
+func paddle_image() -> Image
+    img = new_image(6, 32, 1, 3)
+    img.paint_start()
+    gfx_pen(1)
+    gfx_rect(0, 0, 5, 31)
+    img.paint_end()
+    return img
+end
+
+func new_paddle(name: String, x: Int, ai: Bool) -> Node
+    p = new_static_body2d(name, x, WORLD_H / 2 - 16)
+    p.body.layer = 2
+    p.add_child(new_sprite2d("Sprite", paddle_image(), 0, 0))
+    p.script = Paddle(ai)
+    return p
+end
+
+Main
+    demo = env_get("FRAGUA_DEMO") != ""
+    s = open_screen(320, 256, 3, "Pong")
+    if s == nil
+        Print "pong_nodos: the screen does not open"
+    else
+        s.color(0, 0, 0, 32)
+        s.color(1, 240, 240, 240)
+        s.color(2, 90, 90, 120)
+        set_view(0, 16, WORLD_W, WORLD_H)
+        set_hud_color(0)
+        root = new_node("Pong")
+        root.add_child(new_color_rect("Net", WORLD_W / 2 - 1, 0, 2, WORLD_H, 2))
+        root.add_child(new_color_rect("Line", 0, -2, WORLD_W, 2, 2))
+        root.add_child(new_paddle("Left", 12, false))
+        root.add_child(new_paddle("Right", WORLD_W - 18, true))
+        ball_img = new_image(6, 6, 1, 3)
+        ball_img.paint_start()
+        gfx_pen(1)
+        gfx_rect(1, 0, 4, 5)
+        gfx_rect(0, 1, 5, 4)
+        ball_img.paint_end()
+        ball = new_body2d("Ball", 0, 0)
+        ball.body.collide_map = false
+        ball.body.mask = 2
+        ball.add_child(new_sprite2d("Sprite", ball_img, 0, 0))
+        bounce = BounceEdges()
+        bounce.left = false
+        bounce.right = false
+        ball.add_behavior(bounce)
+        ball.script = Ball(bounce)
+        root.add_child(ball)
+        left = new_label("LeftScore", WORLD_W / 2 - 40, 3, "", 1, 0)
+        bind_label(left, "", "left")
+        root.add_child(left)
+        right = new_label("RightScore", WORLD_W / 2 + 32, 3, "", 1, 0)
+        bind_label(right, "", "right")
+        root.add_child(right)
+        if demo
+            fragua_tree.stop_after = 500
+        end
+        run(root)
+        t = fragua_tree
+        if demo
+            Print "pong_nodos: #{t.frames} frames, #{game_get("left")} - #{game_get("right")}, lost #{t.lost}, work #{t.work / t.frames} ms a frame (at most #{t.worst}), physics #{t.ms_physics / t.frames}, process #{t.ms_process / t.frames}, draw #{t.ms_draw / t.frames}"
+        end
+        fragua_close_screen(s)
+    end
+end

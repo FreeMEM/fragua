@@ -28,6 +28,7 @@ struct Tree
     areas: [Node] = []
     timers: [Node] = []
     maps: [Node] = []
+    rects: [Node] = []            # color rects, on the background
     labels: [Node] = []           # painted on the background
     animated: [Node] = []
     camera: Node = nil
@@ -45,8 +46,8 @@ struct Tree
     cam_y: Int = 0
     view_x: Int = 0
     view_y: Int = 0
-    view_w: Int = 320
-    view_h: Int = 256
+    view_w: Int = 0               # 0: the whole screen (run sets it)
+    view_h: Int = 0
     bg_dirty: Bool = true         # the background has to be drawn again (maps, labels)
     bg_pen: Int = 0
     hud_pen: Int = -1
@@ -277,6 +278,10 @@ func fragua_enter(n: Node)
         t.labels.push(n)
         n.label.dirty = true
     end
+    if n.color_rect != nil
+        t.rects.push(n)
+        t.bg_dirty = true
+    end
     if n.camera != nil and n.camera.current
         t.camera = n
     end
@@ -351,6 +356,10 @@ func fragua_exit(n: Node)
     end
     if n.label != nil and n.label.bg >= 0
         fragua_list_remove(t.labels, n)
+        t.bg_dirty = true
+    end
+    if n.color_rect != nil
+        fragua_list_remove(t.rects, n)
         t.bg_dirty = true
     end
     if t.camera == n
@@ -571,8 +580,19 @@ func run(root: Node)
     end
     s = fragua_screen
     t.screen = s
-    t.view_w = s.width
-    t.view_h = s.height
+    if t.view_w <= 0 or t.view_h <= 0
+        t.view_x = 0
+        t.view_y = 0
+        t.view_w = s.width
+        t.view_h = s.height
+    end
+    # nothing is drawn out of the screen (bob_paste does not clip: it would write over other memory)
+    if t.view_x + t.view_w > s.width
+        t.view_w = s.width - t.view_x
+    end
+    if t.view_y + t.view_h > s.height
+        t.view_h = s.height - t.view_y
+    end
     if not s.has_background
         s.background(t.bg_pen)
     end
