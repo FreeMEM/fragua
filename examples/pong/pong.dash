@@ -1,11 +1,11 @@
-# Pong with Fragua (layer 1). The left paddle: W and S, or the joystick in port 1; the right one plays by itself.
+# Pong with Fragua (layer 1). The left paddle: SCREEN_W and S, or the joystick in port 1; the right one plays by itself.
 # Esc quits. With ENV:FRAGUA_DEMO set, both paddles play by themselves and it quits after 500 frames, printing the
 # score and the frames lost (for the tests).
 
 import "../../fragua.dash"
 
-const W = 320
-const H = 256
+const SCREEN_W = 320
+const SCREEN_H = 256
 const PADDLE_H = 32
 
 var left_score: Int = 0
@@ -27,15 +27,15 @@ end
 func draw_background(s: Screen)
     s.background(0)
     s.background_start()
-    s.rect(W / 2 - 1, 16, 2, H - 16, 2)
-    s.rect(0, 14, W, 2, 2)
-    s.text(W / 2 - 40, 2, "#{left_score}", 1)
-    s.text(W / 2 + 32, 2, "#{right_score}", 1)
+    s.rect(SCREEN_W / 2 - 1, 16, 2, SCREEN_H - 16, 2)
+    s.rect(0, 14, SCREEN_W, 2, 2)
+    s.text(SCREEN_W / 2 - 40, 2, "#{left_score}", 1)
+    s.text(SCREEN_W / 2 + 32, 2, "#{right_score}", 1)
     s.background_end()
 end
 
 func serve(ball: Sprite, to_left: Bool)
-    ball.rect.move_to(W / 2 - 3, H / 2 - 3)
+    ball.rect.move_to(SCREEN_W / 2 - 3, SCREEN_H / 2 - 3)
     ball.vx = 3
     if to_left
         ball.vx = -3
@@ -45,7 +45,7 @@ end
 
 Main
     demo = env_get("FRAGUA_DEMO") != ""
-    s = open_screen(W, H, 3, "Pong")
+    s = open_screen(SCREEN_W, SCREEN_H, 3, "Pong")
     if s == nil
         Print "Pong: the screen does not open"
     else
@@ -63,14 +63,14 @@ Main
         gfx_rect(1, 0, 4, 5)
         gfx_rect(0, 1, 5, 4)
         ball_img.paint_end()
-        left = new_sprite(paddle_img, 12, H / 2 - PADDLE_H / 2)
-        right = new_sprite(paddle_img, W - 18, H / 2 - PADDLE_H / 2)
+        left = new_sprite(paddle_img, 12, SCREEN_H / 2 - PADDLE_H / 2)
+        right = new_sprite(paddle_img, SCREEN_W - 18, SCREEN_H / 2 - PADDLE_H / 2)
         ball = new_sprite(ball_img, 0, 0)
         serve(ball, false)
         paddles = new_group()
         paddles.add(left)
         paddles.add(right)
-        area = Rect(0, 16, W, H - 16)
+        area = Rect(0, 16, SCREEN_W, SCREEN_H - 16)
         draw_background(s)
         clock = new_clock(50)
         work = 0              # ms spent in each frame before present (for the demo's report)
@@ -118,7 +118,7 @@ Main
                 if ball.rect.right() < 0
                     right_score = right_score + 1
                     serve(ball, false)
-                elif ball.rect.x > W
+                elif ball.rect.x > SCREEN_W
                     left_score = left_score + 1
                     serve(ball, true)
                 end
