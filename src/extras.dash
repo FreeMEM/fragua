@@ -71,34 +71,55 @@ func fragua_code_down(c: Int) -> Bool
     return joy_fire(1)
 end
 
-# Once a frame, before the physics (the tree calls it)
+var fragua_input_frame: Int = 1             # the frame the actions are for
+var fragua_action_frame: {String: Int} = {}  # the frame each action was last read in
+
+# Once a frame, before the physics (the tree calls it): the actions are read when asked, once a frame each
 func fragua_input_update()
     if fragua_actions.length == 0
         fragua_default_actions()
     end
-    for name in fragua_actions.keys()
-        fragua_before[name] = fragua_now[name]
-        down = fragua_forced.get(name, false)
-        if not down
-            for c in fragua_actions[name]
-                if not down and fragua_code_down(c)
-                    down = true
-                end
+    fragua_input_frame = fragua_input_frame + 1
+end
+
+func fragua_action_read(name: String)
+    if fragua_action_frame.get(name, 0) == fragua_input_frame
+        return
+    end
+    if not fragua_actions.has(name)
+        if fragua_actions.length == 0
+            fragua_default_actions()
+        end
+        if not fragua_actions.has(name)
+            return
+        end
+    end
+    # what it was the last time it was read stands for the frame before
+    fragua_before[name] = fragua_now[name] and fragua_action_frame.get(name, 0) == fragua_input_frame - 1
+    down = fragua_forced.get(name, false)
+    if not down
+        for c in fragua_actions[name]
+            if not down and fragua_code_down(c)
+                down = true
             end
         end
-        fragua_now[name] = down
     end
+    fragua_now[name] = down
+    fragua_action_frame[name] = fragua_input_frame
 end
 
 func action_pressed(name: String) -> Bool
+    fragua_action_read(name)
     return fragua_now.get(name, false)
 end
 
 func action_just_pressed(name: String) -> Bool
+    fragua_action_read(name)
     return fragua_now.get(name, false) and not fragua_before.get(name, false)
 end
 
 func action_just_released(name: String) -> Bool
+    fragua_action_read(name)
     return fragua_before.get(name, false) and not fragua_now.get(name, false)
 end
 

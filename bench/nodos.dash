@@ -1,0 +1,85 @@
+# How many nodes and sprites fit in a frame: the work of a frame (ms, before present) with N sprites that bounce
+# around (BOBs of 16 x 16 with the BounceEdges behaviour), and with N nodes that only think (a script each, nothing
+# drawn). Run at real speed: bench/nodos.sh DASH_DIR (A500=1 for an A500).
+
+import "../fragua.dash"
+
+struct Think: Script
+    t: Int = 0
+
+    func ready(n: Node)
+    end
+
+    func process(n: Node, delta: Int)
+        self.t = self.t + delta
+    end
+
+    func physics_process(n: Node)
+        n.x = n.x + 1
+        if n.x > 300
+            n.x = 0
+        end
+    end
+
+    func on_signal(n: Node, name: String, from: Node, data: Int)
+    end
+end
+
+var img: Image = nil
+
+func measure(sprites: Int, thinkers: Int)
+    root = new_node("Bench")
+    i = 0
+    while i < sprites
+        s = new_body2d("S", 20 + (i * 37) % 260, 20 + (i * 53) % 200)
+        s.body.collide_map = false
+        s.add_child(new_sprite2d("Sprite", img, 0, 0))
+        b = BounceEdges()
+        b.vx = Fixed(1 + i % 3)
+        b.vy = Fixed(1 + i % 2)
+        s.add_behavior(b)
+        root.add_child(s)
+        i = i + 1
+    end
+    i = 0
+    while i < thinkers
+        n = new_node2d("T", i, 0)
+        n.script = Think()
+        root.add_child(n)
+        i = i + 1
+    end
+    t = fragua_tree
+    t.quitting = false
+    t.frames = 0
+    t.work = 0
+    t.worst = 0
+    t.lost = 0
+    t.ms_physics = 0
+    t.ms_process = 0
+    t.ms_draw = 0
+    t.stop_after = 150
+    run(root)
+    Print "bench: #{sprites} sprites, #{thinkers} nodes: #{t.work * 10 / t.frames / 10}.#{t.work * 10 / t.frames % 10} ms a frame (physics #{t.ms_physics * 10 / t.frames / 10}.#{t.ms_physics * 10 / t.frames % 10}, draw #{t.ms_draw * 10 / t.frames / 10}.#{t.ms_draw * 10 / t.frames % 10}), lost #{t.lost}"
+end
+
+Main
+    s = open_screen(320, 256, 5, "Bench")
+    if s == nil
+        Print "bench: no screen"
+    else
+        s.color(0, 0, 0, 40)
+        s.color(1, 250, 220, 80)
+        img = new_image(16, 16, 1, 5)
+        img.paint_start()
+        gfx_pen(1)
+        gfx_circle_fill(7, 7, 7)
+        img.paint_end()
+        for n in [0, 1, 5, 10, 15, 20]
+            measure(n, 0)
+        end
+        for n in [10, 25, 50, 100]
+            measure(0, n)
+        end
+        close_screen(s)
+    end
+end

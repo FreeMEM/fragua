@@ -94,11 +94,91 @@ autobuses, como los de 8 bits de los 80. Todo el código y las imágenes. Sitio:
 - marcador, tiempo y sonido de motor: `Label` enlazado a variables del juego, `Timer` y `AudioPlayer` en bucle con
   el tono (`sound_period`) según la velocidad.
 
-## Lo que le falta a Dash (se apunta aquí con precisión)
+### J. Pedidos del diseño de UX de Forja (`docs/ESCENAS_UX.md`), aún por hacer
+Comportamientos `GridMove`, `Spawner`, `Path`, `Scroller`, `IsoMove`, `Button`; señal al salir del árbol; clic
+sobre un nodo; variable que cambia ("changed"); acciones de mover, poner velocidad, saltar, parar, meter en un
+grupo, encender o apagar un comportamiento, sacudir la cámara; guardar y cargar la partida. Hechos ya: `Vehicle`,
+`Sine`, `Shooter` (emite `shoot`; la bala la crea un evento con `spawn`).
 
-Ver la sección del mismo nombre al final de la bitácora.
+### K. Para el 3D (MiniGL), más adelante
+Los nombres dejan sitio: los nodos 2D llevan el sufijo `2D` (`Node2D`, `Body2D`, `Camera2D`...), el orden de dibujo
+es `z_index` (no `z`, que queda para la tercera coordenada) y la proyección es de la escena (`"projection"`), así que
+`Node3D`, `Body3D`, `Camera3D` y `"projection": "3d"` caben sin cambiar lo que hay.
+
+## Medidas (2026-11-17, FS-UAE a velocidad real, `./dash --gcc`)
+
+`bench/nodos.sh`: el trabajo de un fotograma (antes de esperar al barrido) con N sprites de 16x16 que rebotan
+(Body2D con BounceEdges y un BOB) o con N nodos que solo piensan (un script con `process` y `physics_process`).
+
+| | A1200 (68020 14 MHz, sin Fast) | A500 (68000 7 MHz) |
+|---|---:|---:|
+| Nada (el bucle, la entrada) | 2,1 ms | 5,5 ms |
+| 1 sprite | 4,8 ms | 13,4 ms |
+| 5 sprites | 17,2 ms | 53 ms |
+| 10 sprites | 35,2 ms | 103 ms |
+| 20 sprites | 69,7 ms | 200 ms |
+| 10 nodos que piensan | 4,3 ms | 15,8 ms |
+| 25 nodos | 7,8 ms | 40,8 ms |
+| 50 nodos | 13,8 ms | 77 ms |
+| 100 nodos | 36,7 ms | 150 ms |
+
+Lo que cabe en un fotograma de 20 ms (50 Hz): **en A1200, unos 6 sprites BOB o unos 60 nodos que piensan; en
+A500, 1 o 2 sprites o unos 10 nodos.** Con `set_frame_rate(25)`, el doble. Cada sprite cuesta unos 2 ms de dibujo
+en A1200 (pegar con máscara 1,6 ms y reponer el fondo) y 5 ms en A500: es el sistema
+(`BltMaskBitMapRastPort`), no Fragua. Los sprites de hardware no cuestan.
+
+Ejemplos (A1200 real, `--gcc`): Pong con nodos, 13 ms por fotograma; plataformas a 25 por segundo, 39-46 ms por
+fotograma con unos 10 sprites a la vista (pierde algún fotograma al cambiar de pantalla, que repinta el fondo).
+Con `./dash`, el mismo Pong con nodos gasta 26 ms y plataformas 80.
+
+## Lo que le falta a Dash (con precisión)
+
+Por orden de lo que pesa para Fragua:
+1. **Pegar con máscara rápido** (lo que más cuesta): `bob_paste` usa `BltMaskBitMapRastPort`, varias pasadas del
+   blitter por plano: 1,6 ms por 16x16 en A1200. Hace falta un `bob_paste` que programe el blitter él mismo
+   (`OwnBlitter`, una pasada por plano con minterm 0xCA: A = máscara, B = imagen, C = D = destino) o, para hacerlo
+   desde Fragua en `asm`, las direcciones: `bitmap_planes(id)` (los planos de un bitmap o BOB), `bob_mask(id)` (su
+   máscara) y `screen_bitmap()` (el búfer escondido de la pantalla). Sin eso no se puede probar la parte caliente
+   en `asm`: el ensamblador no ve los bitmaps.
+2. **`bob_paste` sin recorte:** pintar fuera de la pantalla escribe en otra memoria (el Pong con nodos pintó
+   bolas en el otro búfer). Fragua no pinta lo que no cabe entero; falta un `bob_paste` que recorte, para que los
+   sprites entren por el borde.
+3. **Scroll de hardware** (para el scroll suave y el tutorial de la moto): una pantalla con un bitmap más ancho que
+   la vista y moverla (`screen_scroll(x, y)`, con `ScrollVPort` o con el copper: BPLxPT y BPLCON1), más pintar
+   solo la columna de tiles que entra. Sin eso la cámara va por pantallazos.
+4. **El camino directo (`./dash`) es mucho más lento que `--gcc`** en código con llamadas: `n.global_x()` 112 µs
+   frente a 4, `tilemap_get` 40 µs frente a 2, un paso de física 3 ms frente a 1,7 (A1200, medido con
+   `bench`): el mismo juego pierde el doble de fotogramas.
+5. **El contador de referencias pesa:** guardar un objeto en una variable local (`b = n.body`) cuesta unos 25 µs
+   en un A1200 sin Fast (retain y release). Fragua escribe sus partes calientes sin variables de objetos
+   (`fragua_tree.bodies[i].body.solid`); un análisis que no cuente en esos casos lo haría solo.
+6. Fallos encontrados (están arriba, en la bitácora): struct sin campos que cuelga al liberarse (**grave**);
+   `x.close()` y campos `opened` en `--gcc`; métodos de interfaz con `_` en `./dash`; `step` como nombre en
+   `./dash`; `const W` que choca con el runtime en `--gcc`; `f()[0]`; el error de interfaz con la línea de otro
+   fichero en `./dash`.
+7. **`Func` que devuelva un struct:** un comportamiento `Spawner` o `Shooter` no puede llamar a `scene_bala()`
+   guardada en una variable (`Func` solo devuelve `Int`). Por eso `Shooter` emite una señal y un evento crea la
+   bala.
+8. `mouse_x`/`mouse_y` dan 0 sin ventana: `Draggable` necesita la posición del ratón en una pantalla propia sin
+   ventana (sin probar).
 
 ## Bitácora
+
+### 2026-11-17 (resumen del día)
+- Hecho: A (árbol, señales, grupos), B (sprites BOB y de hardware, animaciones, TileMap, cámara por pantallazos,
+  Label, ColorRect, recorte), C (cajas y círculos, `move_and_slide` con sólidos, plataformas de un sentido y
+  pendientes, cuerpos sólidos, áreas con capas), D (Timer, AudioPlayer, música, partículas, tweens), E (los doce
+  comportamientos y `Vehicle`, `Sine`, `Shooter`), F (formato `.escena`, `tools/escena.py`, eventos con acciones),
+  G (plataformas con escenas, Pong con nodos, isométrico; `tests/todas.sh`; medidas), H1 (`api/fragua.json` y la
+  referencia en los dos idiomas), H3 (README).
+- Isométrico de primera: `set_isometric`, mapa de rombos, orden por profundidad, `elevation`, choques en el plano.
+- Rendimiento: nodos quietos lejos de la cámara (`set_active_margin`), áreas una vez por fotograma con cajas en
+  caché, el mapa de choques en números del árbol, animaciones y entrada a petición, `set_frame_rate(25)` con la
+  física a 50.
+- Sin hacer: H2 (plantilla de juego), scroll suave (Dash), AnimationPlayer, luces, guardar partida, los
+  comportamientos que pide la UX (J). Una rareza sin resolver: en 2 de unas 6 ejecuciones del isométrico la
+  captura salió con basura (sin errores de `--memcheck` y el juego acaba bien); puede ser la captura (`shot.c`)
+  con doble búfer o algo pintado fuera: hay que mirarlo.
 
 ### 2026-11-17
 - Base escrita: `src/node.dash` (Node y sus datos por tipo, interfaz Script), `src/tree.dash` (árbol, grupos,

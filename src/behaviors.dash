@@ -305,6 +305,31 @@ struct Patrol: Script
     end
 end
 
+# The world's rectangle in these four, with no Rect made (for each step)
+var fragua_wx: Int = 0
+var fragua_wy: Int = 0
+var fragua_ww: Int = 0
+var fragua_wh: Int = 0
+
+func fragua_world_box()
+    if fragua_tree.cm_id >= 0
+        fragua_wx = fragua_tree.cm_x
+        fragua_wy = fragua_tree.cm_y
+        fragua_ww = fragua_tree.cm_w * fragua_tree.cm_tile
+        fragua_wh = fragua_tree.cm_h * fragua_tree.cm_tile
+    elif fragua_tree.maps.length > 0
+        fragua_wx = fragua_tree.maps[0].global_x()
+        fragua_wy = fragua_tree.maps[0].global_y()
+        fragua_ww = fragua_tree.maps[0].map.width * fragua_tree.maps[0].map.tile
+        fragua_wh = fragua_tree.maps[0].map.height * fragua_tree.maps[0].map.tile
+    else
+        fragua_wx = 0
+        fragua_wy = 0
+        fragua_ww = fragua_tree.view_w
+        fragua_wh = fragua_tree.view_h
+    end
+end
+
 # The world's rectangle for the behaviours below: the first tile map, or else the view
 func world_rect() -> Rect
     t = fragua_tree
@@ -332,13 +357,17 @@ struct BounceEdges: Script
 
     func physics_process(n: Node)
         move_node(n, self.vx, self.vy)
-        r = world_rect()
+        fragua_world_box()
+        wx = fragua_wx
+        wy = fragua_wy
+        wr = fragua_wx + fragua_ww
+        wb = fragua_wy + fragua_wh
         fragua_box(n)
-        if (self.left and fragua_bx < r.x and self.vx < 0) or (self.right and fragua_bx + fragua_bw > r.right() and self.vx > 0)
+        if (self.left and fragua_bx < wx and self.vx < 0) or (self.right and fragua_bx + fragua_bw > wr and self.vx > 0)
             self.vx = 0 - self.vx
             n.emit("bounced", 0)
         end
-        if (self.top and fragua_by < r.y and self.vy < 0) or (self.bottom and fragua_by + fragua_bh > r.bottom() and self.vy > 0)
+        if (self.top and fragua_by < wy and self.vy < 0) or (self.bottom and fragua_by + fragua_bh > wb and self.vy > 0)
             self.vy = 0 - self.vy
             n.emit("bounced", 1)
         end
