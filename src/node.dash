@@ -1,0 +1,596 @@
+# Layer 2 of Fragua, as in Godot: a tree of nodes. One struct, Node, for every kind of node: what all of them have
+# (name, children, parent, position, groups, signals) and one field for each kind, filled only in the nodes of that
+# kind (n.sprite, n.body, n.shape, n.area, n.map, n.camera, n.label, n.timer, n.audio, n.particles). So get_node()
+# gives a Node with everything at hand (Dash cannot go down from an interface to its struct).
+#
+#   root = new_node("Level")
+#   player = new_body2d("Player", 32, 100)
+#   player.add_child(new_sprite2d("Sprite", load_image("player.iff"), 0, 0))
+#   player.add_child(new_shape_rect("Shape", 2, 0, 12, 16))
+#   player.script = PlayerScript()          # a struct of the game that has the Script interface
+#   root.add_child(player)
+#   run(root, 320, 256, 5, "My game")       # the main loop, until quit()
+#
+# What the game writes: a struct with the Script interface. Fragua calls ready(n) when the node enters the tree
+# (its children first), physics_process(n) 50 times a second (the fixed step), process(n, delta) once a drawn
+# frame (delta: video frames since the last one, 1 when the game keeps up) and on_signal(n, name, from, data) for the
+# signals of the nodes it is connected to. The four have to be there, even if empty.
+
+import "rect.dash"
+import "image.dash"
+
+interface Script
+    func ready(n: Node)
+    func process(n: Node, delta: Int)
+    func physics_process(n: Node)
+    func on_signal(n: Node, name: String, from: Node, data: Int)
+end
+
+# The kinds of node
+const NODE = 0
+const NODE2D = 1
+const SPRITE2D = 2
+const ANIMATED_SPRITE2D = 3
+const SHAPE2D = 4
+const BODY2D = 5
+const AREA2D = 6
+const TILEMAP = 7
+const CAMERA2D = 8
+const LABEL = 9
+const TIMER = 10
+const AUDIO = 11
+const PARTICLES2D = 12
+
+const SHAPE_RECT = 0
+const SHAPE_CIRCLE = 1
+
+# A picture: a BOB (an Image of Fragua) or a hardware sprite. Animations by name: their frames and speed.
+struct SpriteData
+    image: Image = nil
+    frame: Int = 0
+    hw: Int = -1                  # the hardware sprite (1 to 7) when hardware, -1 for a BOB
+    ox: Int = 0                   # where the picture goes from the node (the corner)
+    oy: Int = 0
+    anims: {String: [Int]} = {}   # frames of each animation
+    speeds: {String: Int} = {}    # video frames each animation frame lasts
+    loops: {String: Bool} = {}
+    anim: String = ""             # the one playing
+    playing: Bool = false
+    pos: Int = 0                  # in the frames of the animation
+    tick: Int = 0
+    shown: Bool = false           # a hardware sprite on screen
+    width: Int = 0
+    height: Int = 0
+end
+
+struct ShapeData
+    kind: Int = 0                 # SHAPE_RECT or SHAPE_CIRCLE
+    w: Int = 0                    # a box: from the node's position, w x h
+    h: Int = 0
+    r: Int = 0                    # a circle: centred on the node's position
+end
+
+struct BodyData
+    vx: Fixed = 0                 # pixels a physics step
+    vy: Fixed = 0
+    rx: Fixed = 0                 # what is left of a pixel
+    ry: Fixed = 0
+    on_floor: Bool = false
+    on_wall: Bool = false
+    on_ceiling: Bool = false
+    floor_tile: Int = 0           # the kind of the collision tile under it (TILE_SOLID...)
+    touching: Int = 0             # the kinds of collision tile it overlaps, a bit each (1 << TILE_LADDER...)
+    layer: Int = 1                # the layers it is in (bits), for areas and other bodies
+    mask: Int = 1                 # the layers of solid bodies it stops at
+    collide_map: Bool = true      # stops at the solid tiles of the tile maps
+    solid: Bool = false           # other bodies stop at it (a wall, a moving platform)
+    bounce: Fixed = 0             # 0 stops at a wall; 1 comes back at the same speed
+    hit: Int = 0                  # the id of the last solid body it stopped at (node_by_id), 0 none
+end
+
+struct AreaData
+    layer: Int = 1
+    mask: Int = 1                 # the layers of the bodies (and areas) it sees
+    monitoring: Bool = true
+    inside: [Int] = []            # the ids of what is inside now
+end
+
+struct MapData
+    id: Int = -1                  # the tile map of Dash
+    tileset: Image = nil
+    collision: Int = -1           # the collision layer (type 1 in Forja's editor), or -1
+    tile: Int = 16
+    width: Int = 0                # in cells
+    height: Int = 0
+    front: Int = -1               # from this layer on, drawn with its colour 0 transparent (-1: none)
+end
+
+struct CameraData
+    target: Node = nil            # dropped when the camera is freed
+    view_x: Int = 0               # where the world shows on the screen
+    view_y: Int = 0
+    view_w: Int = 320
+    view_h: Int = 256
+    limit_w: Int = 0              # the size of the world (0: no limit)
+    limit_h: Int = 0
+    cx: Int = 0                   # the world point at the corner of the view
+    cy: Int = 0
+    current: Bool = true
+end
+
+struct LabelData
+    text: String = ""
+    pen: Int = 1
+    bg: Int = 0                   # >= 0: painted on the background with a box of this colour (cheap); -1: drawn on
+                                  # top in each frame (costs a text each frame)
+    bind: String = ""             # a game variable: the text is prefix + its value, kept up to date
+    prefix: String = ""
+    shown: String = ""            # what is painted now on the background
+    shown_w: Int = 0
+    dirty: Bool = true
+end
+
+struct TimerData
+    wait: Int = 50                # video frames (50 a second in PAL)
+    left: Int = 0
+    one_shot: Bool = false
+    autostart: Bool = false
+    running: Bool = false
+end
+
+struct AudioData
+    sound: Int = -1               # Dash's sound number
+    channel: Int = 0              # 0 to 3 (-1: the first free one)
+    volume: Int = 64
+end
+
+struct ParticlesData
+    px: [Int] = []                # in 1/16 of a pixel
+    py: [Int] = []
+    pvx: [Int] = []
+    pvy: [Int] = []
+    life: [Int] = []
+    lifetime: Int = 25            # video frames
+    gravity: Int = 2              # 1/16 of a pixel a frame
+    speed: Int = 24               # 1/16 of a pixel a frame
+    size: Int = 2
+    pen: Int = 1
+    amount: Int = 8
+    one_shot: Bool = true
+    emitting: Bool = false
+end
+
+struct Connection
+    signal: String
+    to: Node                      # dropped when either of them is freed
+end
+
+struct Node
+    name: String
+    kind: Int = 0
+    children: [Node] = []
+    weak parent: Node = nil
+    script: Script = nil
+    behaviors: [Script] = []
+    x: Int = 0                    # from the parent
+    y: Int = 0
+    z_index: Int = 0                   # drawing order: bigger, in front
+    visible: Bool = true
+    ui: Bool = false              # in screen coordinates: the camera does not move it (score, menus)
+    id: Int = 0
+    groups: [String] = []
+    conns: [Connection] = []
+    in_tree: Bool = false
+    ready_done: Bool = false
+    dead: Bool = false            # queue_free'd: it goes at the end of the frame
+    paused: Bool = false          # no process, physics_process or behaviours (its children go on)
+    weak col: Node = nil          # its collision shape (the first SHAPE2D child)
+    sprite: SpriteData = nil
+    shape: ShapeData = nil
+    body: BodyData = nil
+    area: AreaData = nil
+    map: MapData = nil
+    camera: CameraData = nil
+    label: LabelData = nil
+    timer: TimerData = nil
+    audio: AudioData = nil
+    particles: ParticlesData = nil
+
+    # --- the tree ---
+
+    func add_child(c: Node)
+        if c.parent != nil
+            c.parent.remove_child(c)
+        end
+        c.parent = self
+        self.children.push(c)
+        if c.kind == SHAPE2D and self.col == nil
+            self.col = c
+        end
+        if self.in_tree
+            fragua_enter(c)
+            fragua_ready(c)
+        end
+    end
+
+    # Out of the tree, not freed: it can be added again (during the frame, better queue_free)
+    func remove_child(c: Node)
+        i = 0
+        while i < self.children.length
+            if self.children[i] == c
+                if c.in_tree
+                    fragua_exit(c)
+                end
+                if self.col == c
+                    self.col = nil
+                end
+                c.parent = nil
+                self.children.remove(i)
+                return
+            end
+            i = i + 1
+        end
+    end
+
+    # Out of the tree at the end of this frame, with its children
+    func queue_free()
+        if not self.dead
+            self.dead = true
+            fragua_tree.free_queue.push(self)
+        end
+    end
+
+    # A node by its path from this one: "Player/Gun", ".." the parent, "/" from the root
+    func get_node(path: String) -> Node
+        var n: Node = self
+        if str_starts(path, "/")
+            n = fragua_tree.root
+            path = path[1:]
+        end
+        for part in str_split(path, "/")
+            if n == nil
+                return nil
+            end
+            if part == ".."
+                n = n.parent
+            elif part != "" and part != "."
+                n = n.get_child(part)
+            end
+        end
+        return n
+    end
+
+    func get_child(name: String) -> Node
+        for c in self.children
+            if c.name == name
+                return c
+            end
+        end
+        return nil
+    end
+
+    # The first node with that name below this one, at any depth
+    func find(name: String) -> Node
+        for c in self.children
+            if c.name == name
+                return c
+            end
+        end
+        for c in self.children
+            f = c.find(name)
+            if f != nil
+                return f
+            end
+        end
+        return nil
+    end
+
+    # --- position ---
+
+    func global_x() -> Int
+        if self.parent == nil
+            return self.x
+        end
+        return self.x + self.parent.global_x()
+    end
+
+    func global_y() -> Int
+        if self.parent == nil
+            return self.y
+        end
+        return self.y + self.parent.global_y()
+    end
+
+    func set_pos(x: Int, y: Int)
+        self.x = x
+        self.y = y
+    end
+
+    func set_global_pos(x: Int, y: Int)
+        if self.parent == nil
+            self.set_pos(x, y)
+        else
+            self.set_pos(x - self.parent.global_x(), y - self.parent.global_y())
+        end
+    end
+
+    # --- groups ---
+
+    func add_to_group(g: String)
+        if self.groups.has(g)
+            return
+        end
+        self.groups.push(g)
+        if self.in_tree
+            fragua_group_add(self, g)
+        end
+    end
+
+    func remove_from_group(g: String)
+        i = 0
+        while i < self.groups.length
+            if self.groups[i] == g
+                self.groups.remove(i)
+                if self.in_tree
+                    fragua_group_remove(self, g)
+                end
+                return
+            end
+            i = i + 1
+        end
+    end
+
+    func is_in_group(g: String) -> Bool
+        return self.groups.has(g)
+    end
+
+    # --- signals ---
+
+    # The nodes connected to this signal get it once this frame is over (in their on_signal)
+    func emit(signal: String, data: Int)
+        t = fragua_tree
+        t.sig_name.push(signal)
+        t.sig_from.push(self)
+        t.sig_data.push(data)
+    end
+
+    func connect(signal: String, to: Node)
+        self.conns.push(Connection(signal, to))
+    end
+
+    func disconnect(signal: String, to: Node)
+        i = self.conns.length - 1
+        while i >= 0
+            if self.conns[i].signal == signal and self.conns[i].to == to
+                self.conns.remove(i)
+            end
+            i = i - 1
+        end
+    end
+
+    # --- behaviours and the drawing order ---
+
+    func add_behavior(b: Script)
+        self.behaviors.push(b)
+        fragua_scripted(self)
+        if self.ready_done
+            b.ready(self)
+        end
+    end
+
+    func set_z_index(z: Int)
+        self.z_index = z
+        if self.in_tree and fragua_is_visual(self)
+            fragua_list_remove(fragua_tree.visuals, self)
+            fragua_visual_add(self)
+        end
+    end
+
+    # --- what some kinds do (a method of the wrong kind does nothing) ---
+
+    # AnimatedSprite: plays an animation from its first frame (if it is not the one playing)
+    func play(anim: String)
+        s = self.sprite
+        if s != nil and s.anims.has(anim)
+            if s.anim != anim or not s.playing
+                s.anim = anim
+                s.pos = 0
+                s.tick = 0
+                s.playing = true
+                s.frame = s.anims[anim][0]
+            end
+        elif self.audio != nil
+            fragua_audio_play(self)
+        end
+    end
+
+    func stop()
+        if self.sprite != nil
+            self.sprite.playing = false
+        elif self.timer != nil
+            self.timer.running = false
+        elif self.audio != nil and self.audio.channel >= 0
+            sound_stop(self.audio.channel)
+        elif self.particles != nil
+            self.particles.emitting = false
+        end
+    end
+
+    # Timer: starts counting (again); Particles: one burst (or emitting until stop)
+    func start()
+        if self.timer != nil
+            self.timer.left = self.timer.wait
+            self.timer.running = true
+        elif self.particles != nil
+            fragua_particles_burst(self)
+        end
+    end
+
+    # Label: a new text
+    func set_text(t: String)
+        if self.label != nil and self.label.text != t
+            self.label.text = t
+            self.label.dirty = true
+        end
+    end
+
+    # Body: moves by its speed, stopping at walls (see physics.dash)
+    func move_and_slide()
+        fragua_move_and_slide(self)
+    end
+
+    # The box it collides with, in world coordinates (its shape, or else its picture)
+    func hitbox() -> Rect
+        return fragua_hitbox(self)
+    end
+
+    func overlaps(o: Node) -> Bool
+        return fragua_overlaps(self, o)
+    end
+end
+
+# --- new nodes of each kind ---
+
+func new_node(name: String) -> Node
+    return Node(name, NODE)
+end
+
+func new_node2d(name: String, x: Int, y: Int) -> Node
+    n = Node(name, NODE2D)
+    n.set_pos(x, y)
+    return n
+end
+
+# A picture (a BOB): drawn with its colour 0 transparent, its top left corner at the node
+func new_sprite2d(name: String, img: Image, x: Int, y: Int) -> Node
+    n = Node(name, SPRITE2D)
+    n.set_pos(x, y)
+    n.sprite = SpriteData(img)
+    if img != nil
+        n.sprite.width = img.width
+        n.sprite.height = img.height
+    end
+    return n
+end
+
+# A picture with animations: add them with add_animation, then play("walk")
+func new_animated_sprite2d(name: String, img: Image, x: Int, y: Int) -> Node
+    n = new_sprite2d(name, img, x, y)
+    n.kind = ANIMATED_SPRITE2D
+    return n
+end
+
+# frames: the frames of the image, in order; speed: video frames each one lasts
+func add_animation(n: Node, anim: String, frames: [Int], speed: Int, looping: Bool)
+    if n.sprite == nil or frames.length == 0
+        return
+    end
+    n.sprite.anims[anim] = frames
+    if speed < 1
+        speed = 1
+    end
+    n.sprite.speeds[anim] = speed
+    n.sprite.loops[anim] = looping
+end
+
+# A hardware sprite (sprite_load of Dash: frames 16 pixels wide, 3 colours): free to move, at most 7. Its colours
+# from the picture's palette. nil if it cannot be loaded or no hardware sprite is left.
+func new_hw_sprite2d(name: String, file: String, x: Int, y: Int) -> Node
+    hw = fragua_hw_slot()
+    if hw < 0 or not sprite_load(hw, file)
+        return nil
+    end
+    fragua_hw_used[hw] = true
+    sprite_load_colors(hw, file)
+    n = Node(name, SPRITE2D)
+    n.set_pos(x, y)
+    n.sprite = SpriteData(nil)
+    n.sprite.hw = hw
+    n.sprite.width = 16
+    n.sprite.height = 16
+    return n
+end
+
+func new_shape_rect(name: String, x: Int, y: Int, w: Int, h: Int) -> Node
+    n = Node(name, SHAPE2D)
+    n.set_pos(x, y)
+    n.shape = ShapeData(SHAPE_RECT, w, h, 0)
+    return n
+end
+
+# A circle of radius r centred on the node
+func new_shape_circle(name: String, x: Int, y: Int, r: Int) -> Node
+    n = Node(name, SHAPE2D)
+    n.set_pos(x, y)
+    n.shape = ShapeData(SHAPE_CIRCLE, r * 2, r * 2, r)
+    return n
+end
+
+# A kinematic body: moves with move_and_slide() and stops at walls
+func new_body2d(name: String, x: Int, y: Int) -> Node
+    n = Node(name, BODY2D)
+    n.set_pos(x, y)
+    n.body = BodyData()
+    return n
+end
+
+# A body that does not move by itself and stops the others (a wall, a crate, a moving platform)
+func new_static_body2d(name: String, x: Int, y: Int) -> Node
+    n = new_body2d(name, x, y)
+    n.body.solid = true
+    n.body.collide_map = false
+    return n
+end
+
+# Tells when bodies come in (body_entered) and go out (body_exited); data is the other one's id (node_by_id)
+func new_area2d(name: String, x: Int, y: Int) -> Node
+    n = Node(name, AREA2D)
+    n.set_pos(x, y)
+    n.area = AreaData()
+    return n
+end
+
+func new_timer(name: String, wait: Int, one_shot: Bool) -> Node
+    n = Node(name, TIMER)
+    n.timer = TimerData(wait, 0, one_shot)
+    return n
+end
+
+# A text. bg >= 0: painted on the background on a box of that colour, only when it changes (cheap); -1: drawn
+# on top in each frame
+func new_label(name: String, x: Int, y: Int, text: String, pen: Int, bg: Int) -> Node
+    n = Node(name, LABEL)
+    n.set_pos(x, y)
+    n.ui = true
+    n.label = LabelData(text, pen, bg)
+    return n
+end
+
+# The camera: follows a node, a screen at a time (see world.dash)
+func new_camera2d(name: String) -> Node
+    n = Node(name, CAMERA2D)
+    n.camera = CameraData()
+    return n
+end
+
+# --- hardware sprites in use ---
+
+var fragua_hw_used: [Bool] = []
+
+func fragua_hw_slot() -> Int
+    if fragua_hw_used.length == 0
+        i = 0
+        while i < 8
+            fragua_hw_used.push(false)
+            i = i + 1
+        end
+    end
+    i = 1                         # 0 is the mouse pointer's
+    while i < 8
+        if not fragua_hw_used[i]
+            return i
+        end
+        i = i + 1
+    end
+    return -1
+end

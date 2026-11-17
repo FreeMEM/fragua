@@ -1,7 +1,7 @@
 # Screen: the game's own screen, double buffered when it can be (AmigaOS 3.0 or later): you draw on the hidden
 # buffer and present() shows it in the next vertical blank.
 #
-#   s = screen_open(320, 256, 5, "Pong")   # nil if it cannot open
+#   s = open_screen(320, 256, 5, "Pong")   # nil if it cannot open
 #   s.color(1, 255, 255, 255)              # palette colour 1 (8 bits each)
 #   s.rect(x, y, w, h, pen)                # a filled rectangle
 #   s.text(x, y, "Score", pen)
@@ -27,6 +27,8 @@ struct Screen
     back: Int = 0         # the buffer being drawn: 0 or 1
     has_background: Bool = false
     pending: Int = 0      # buffers that still have to copy the whole background
+    dirty0: [Int] = []    # rectangles to put back in buffer 0 and in buffer 1 (x, y, w, h each), for mark()
+    dirty1: [Int] = []
 
     func color(i: Int, r: Int, g: Int, b: Int)
         gfx_rgb8(i, r, g, b)
@@ -81,14 +83,53 @@ struct Screen
         self.pending = 2
     end
 
-    # At the start of each frame: the whole background, if it changed and this buffer does not have it yet
+    # At the start of each frame: the whole background, if it changed and this buffer does not have it yet; if not,
+    # the background where something was drawn in this buffer (the rectangles of mark)
     func begin()
+        var d: [Int] = self.dirty0
+        if self.back == 1
+            d = self.dirty1
+        end
         if self.pending > 0 and self.has_background
             bitmap_blit(FRAGUA_BACKGROUND, 0, 0, self.width, self.height, 0, 0)
             self.pending = self.pending - 1
             if not self.double
                 self.pending = 0
             end
+        else
+            i = 0
+            while i < d.length
+                self.restore(d[i], d[i + 1], d[i + 2], d[i + 3])
+                i = i + 4
+            end
+        end
+        d.clear()
+    end
+
+    # Something drawn in this buffer: begin() puts the background back there when this buffer comes again
+    func mark(x: Int, y: Int, w: Int, h: Int)
+        var d: [Int] = self.dirty0
+        if self.back == 1
+            d = self.dirty1
+        end
+        d.push(x)
+        d.push(y)
+        d.push(w)
+        d.push(h)
+    end
+
+    # The background changed there: put back now in this buffer and when the other one comes
+    func refresh(x: Int, y: Int, w: Int, h: Int)
+        self.restore(x, y, w, h)
+        if self.double
+            var d: [Int] = self.dirty1
+            if self.back == 1
+                d = self.dirty0
+            end
+            d.push(x)
+            d.push(y)
+            d.push(w)
+            d.push(h)
         end
     end
 
@@ -135,7 +176,7 @@ end
 
 var fragua_screen: Screen = nil    # the open screen (sprites erase themselves on it)
 
-func screen_open(width: Int, height: Int, depth: Int, title: String) -> Screen
+func open_screen(width: Int, height: Int, depth: Int, title: String) -> Screen
     if not screen_open_custom(width, height, depth, title)
         return nil
     end

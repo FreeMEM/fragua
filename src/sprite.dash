@@ -1,11 +1,11 @@
 # Sprite and Group, as in pygame: a sprite is an image with a rectangle and a frame; a group draws all its sprites
 # and finds collisions.
 #
-#   s = sprite_new(img, x, y)          # its rect is as big as a frame of img
+#   s = new_sprite(img, x, y)          # its rect is as big as a frame of img
 #   s.vx = 2                           # speed in pixels a frame (move() adds it)
 #   s.move()
 #   s.draw()
-#   g = group_new()
+#   g = new_group()
 #   g.add(s)
 #   g.draw()
 #   hits = g.colliding(player)         # the sprites of g that overlap player (player itself left out)
@@ -82,7 +82,7 @@ struct Sprite
     end
 end
 
-func sprite_new(img: Image, x: Int, y: Int) -> Sprite
+func new_sprite(img: Image, x: Int, y: Int) -> Sprite
     w = 0
     h = 0
     if img != nil
@@ -142,7 +142,7 @@ struct Group
     end
 end
 
-func group_new() -> Group
+func new_group() -> Group
     var l: [Sprite] = []
     return Group(l)
 end

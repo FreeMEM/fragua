@@ -1,0 +1,530 @@
+# The scene tree: the nodes in it, their groups and signals, and the main loop (run).
+#
+#   run(root)                    # opens a 320 x 256 screen of 5 planes if none is open; until quit()
+#   quit()
+#   change_scene(new_root)       # at the end of this frame the old tree goes and this one comes
+#   get_tree_root()
+#   get_nodes_in_group("enemies")
+#   node_by_id(id)               # the node of that id while it is in the tree (nil if not)
+#
+# Each frame: the input, physics_process of every node at the fixed step (once, or two or three times if the game
+# was late), process(delta), the timers and animations, the signals of the frame, the nodes freed, the camera,
+# and the drawing: the background where things were, then the nodes from back (small z) to front.
+
+import "node.dash"
+import "screen.dash"
+import "clock.dash"
+
+struct Tree
+    root: Node = nil
+    screen: Screen = nil
+    clock: Clock = nil
+    next_id: Int = 1
+    by_id: {Int: Node} = {}
+    groups: {String: [Node]} = {}
+    scripted: [Node] = []         # with a script or behaviours
+    visuals: [Node] = []          # drawn in each frame, by z
+    bodies: [Node] = []
+    areas: [Node] = []
+    timers: [Node] = []
+    maps: [Node] = []
+    labels: [Node] = []           # painted on the background
+    animated: [Node] = []
+    camera: Node = nil
+    sig_name: [String] = []
+    sig_from: [Node] = []
+    sig_data: [Int] = []
+    free_queue: [Node] = []
+    next_scene: Node = nil
+    quitting: Bool = false
+    frames: Int = 0               # frames drawn
+    steps: Int = 0                # physics steps done
+    lost: Int = 0                 # frames lost (the game was late)
+    max_steps: Int = 3            # physics steps at most before drawing
+    cam_x: Int = 0                # the camera's world point at the corner of its view (as the background is drawn)
+    cam_y: Int = 0
+    view_x: Int = 0
+    view_y: Int = 0
+    view_w: Int = 320
+    view_h: Int = 256
+    bg_dirty: Bool = true         # the background has to be drawn again (maps, labels)
+    bg_pen: Int = 0
+    work: Int = 0                 # ms of work, all frames (time_ms before present)
+    worst: Int = 0                # the worst frame
+    stop_after: Int = 0           # quit after so many frames (0: never), for tests and measures
+    own_screen: Bool = false      # run() opened the screen (it closes it)
+end
+
+var fragua_tree: Tree = Tree()
+
+func quit()
+    fragua_tree.quitting = true
+end
+
+func get_tree_root() -> Node
+    return fragua_tree.root
+end
+
+func change_scene(root: Node)
+    fragua_tree.next_scene = root
+end
+
+func node_by_id(id: Int) -> Node
+    return fragua_tree.by_id.get(id, nil)
+end
+
+func get_nodes_in_group(g: String) -> [Node]
+    var l: [Node] = fragua_tree.groups.get(g, nil)
+    if l == nil
+        var e: [Node] = []
+        return e
+    end
+    return l
+end
+
+# The node of that id is in the group (for signals whose data is an id)
+func id_in_group(id: Int, g: String) -> Bool
+    n = node_by_id(id)
+    return n != nil and n.is_in_group(g)
+end
+
+# Paused: the tree stops calling process, physics_process and the behaviours of every node (drawing goes on)
+var fragua_paused: Bool = false
+
+func set_paused(p: Bool)
+    fragua_paused = p
+end
+
+# --- in and out of the tree ---
+
+func fragua_list_remove(l: [Node], n: Node)
+    i = 0
+    while i < l.length
+        if l[i] == n
+            l.remove(i)
+            return
+        end
+        i = i + 1
+    end
+end
+
+func fragua_is_visual(n: Node) -> Bool
+    return n.sprite != nil or n.particles != nil or (n.label != nil and n.label.bg < 0)
+end
+
+# In the drawing list, after those with a smaller or equal z
+func fragua_visual_add(n: Node)
+    l = fragua_tree.visuals
+    i = l.length
+    while i > 0 and l[i - 1].z_index > n.z_index
+        i = i - 1
+    end
+    l.insert(i, n)
+end
+
+func fragua_scripted(n: Node)
+    if n.in_tree and not fragua_tree.scripted.has(n)
+        fragua_tree.scripted.push(n)
+    end
+end
+
+func fragua_group_add(n: Node, g: String)
+    t = fragua_tree
+    if not t.groups.has(g)
+        var l: [Node] = []
+        t.groups[g] = l
+    end
+    t.groups[g].push(n)
+end
+
+func fragua_group_remove(n: Node, g: String)
+    t = fragua_tree
+    if t.groups.has(g)
+        fragua_list_remove(t.groups[g], n)
+    end
+end
+
+func fragua_enter(n: Node)
+    t = fragua_tree
+    n.in_tree = true
+    if n.id == 0
+        n.id = t.next_id
+        t.next_id = t.next_id + 1
+    end
+    t.by_id[n.id] = n
+    for g in n.groups
+        fragua_group_add(n, g)
+    end
+    if n.script != nil or n.behaviors.length > 0
+        t.scripted.push(n)
+    end
+    if fragua_is_visual(n)
+        fragua_visual_add(n)
+    end
+    if n.sprite != nil and n.sprite.anims.length > 0
+        t.animated.push(n)
+    end
+    if n.body != nil
+        t.bodies.push(n)
+    end
+    if n.area != nil
+        t.areas.push(n)
+    end
+    if n.timer != nil
+        t.timers.push(n)
+        if n.timer.autostart
+            n.start()
+        end
+    end
+    if n.map != nil
+        t.maps.push(n)
+        t.bg_dirty = true
+    end
+    if n.label != nil and n.label.bg >= 0
+        t.labels.push(n)
+        n.label.dirty = true
+    end
+    if n.camera != nil and n.camera.current
+        t.camera = n
+    end
+    i = 0
+    while i < n.children.length
+        fragua_enter(n.children[i])
+        i = i + 1
+    end
+end
+
+# ready: the children first, once in the life of the node
+func fragua_ready(n: Node)
+    i = 0
+    while i < n.children.length
+        fragua_ready(n.children[i])
+        i = i + 1
+    end
+    if not n.ready_done
+        n.ready_done = true
+        if n.script != nil
+            n.script.ready(n)
+        end
+        for b in n.behaviors
+            b.ready(n)
+        end
+    end
+end
+
+func fragua_exit(n: Node)
+    t = fragua_tree
+    for c in n.children
+        fragua_exit(c)
+    end
+    n.in_tree = false
+    t.by_id.remove(n.id)
+    for g in n.groups
+        fragua_group_remove(n, g)
+    end
+    fragua_list_remove(t.scripted, n)
+    if fragua_is_visual(n)
+        fragua_list_remove(t.visuals, n)
+    end
+    if n.sprite != nil
+        fragua_list_remove(t.animated, n)
+        if n.sprite.hw >= 0 and n.sprite.shown
+            sprite_hide(n.sprite.hw)
+            n.sprite.shown = false
+        end
+    end
+    if n.body != nil
+        fragua_list_remove(t.bodies, n)
+    end
+    if n.area != nil
+        fragua_list_remove(t.areas, n)
+        n.area.inside.clear()
+    end
+    if n.timer != nil
+        fragua_list_remove(t.timers, n)
+    end
+    if n.map != nil
+        fragua_list_remove(t.maps, n)
+        t.bg_dirty = true
+    end
+    if n.label != nil and n.label.bg >= 0
+        fragua_list_remove(t.labels, n)
+        t.bg_dirty = true
+    end
+    if t.camera == n
+        t.camera = nil
+    end
+end
+
+# Freed for good (after leaving the tree): what it holds goes, so nothing keeps it alive in a cycle
+func fragua_free(n: Node)
+    for c in n.children
+        fragua_free(c)
+        c.parent = nil
+    end
+    n.dead = true
+    n.conns.clear()
+    n.script = nil
+    n.behaviors.clear()
+    if n.camera != nil
+        n.camera.target = nil
+    end
+    if n.sprite != nil and n.sprite.hw >= 0
+        sprite_free(n.sprite.hw)
+        fragua_hw_used[n.sprite.hw] = false
+        n.sprite.hw = -1
+    end
+    if n.map != nil and n.map.id >= 0
+        tilemap_free(n.map.id)
+        fragua_map_used[n.map.id] = false
+        n.map.id = -1
+    end
+    n.children.clear()
+end
+
+# --- signals: once a frame. A signal goes to the nodes connected to it, and to its own node's script and
+# behaviours (a coin hears its own body_entered without connecting it) ---
+
+func fragua_deliver(to: Node, name: String, from: Node, data: Int)
+    if to.dead and to != from
+        return
+    end
+    if to.script != nil
+        to.script.on_signal(to, name, from, data)
+    end
+    i = 0
+    while i < to.behaviors.length
+        to.behaviors[i].on_signal(to, name, from, data)
+        i = i + 1
+    end
+end
+
+func fragua_signals()
+    t = fragua_tree
+    rounds = 0
+    while t.sig_name.length > 0 and rounds < 4    # what is emitted while delivering goes in the next round
+        names = t.sig_name
+        froms = t.sig_from
+        datas = t.sig_data
+        var n1: [String] = []
+        var n2: [Node] = []
+        var n3: [Int] = []
+        t.sig_name = n1
+        t.sig_from = n2
+        t.sig_data = n3
+        i = 0
+        while i < names.length
+            from = froms[i]
+            name = names[i]
+            fragua_deliver(from, name, from, datas[i])
+            j = 0
+            while j < from.conns.length
+                c = from.conns[j]
+                if c.signal == name and c.to != from
+                    fragua_deliver(c.to, name, from, datas[i])
+                end
+                j = j + 1
+            end
+            i = i + 1
+        end
+        rounds = rounds + 1
+    end
+end
+
+# --- the frame ---
+
+func fragua_physics_step()
+    t = fragua_tree
+    if not fragua_paused
+        i = 0
+        while i < t.scripted.length
+            n = t.scripted[i]
+            if not n.dead and not n.paused
+                if n.script != nil
+                    n.script.physics_process(n)
+                end
+                j = 0
+                while j < n.behaviors.length
+                    n.behaviors[j].physics_process(n)
+                    j = j + 1
+                end
+            end
+            i = i + 1
+        end
+    end
+    fragua_areas_update()
+    t.steps = t.steps + 1
+end
+
+func fragua_process(delta: Int)
+    t = fragua_tree
+    if fragua_paused
+        return
+    end
+    i = 0
+    while i < t.scripted.length
+        n = t.scripted[i]
+        if not n.dead and not n.paused
+            if n.script != nil
+                n.script.process(n, delta)
+            end
+            j = 0
+            while j < n.behaviors.length
+                n.behaviors[j].process(n, delta)
+                j = j + 1
+            end
+        end
+        i = i + 1
+    end
+    # timers
+    i = 0
+    while i < t.timers.length
+        n = t.timers[i]
+        tm = n.timer
+        if tm.running
+            tm.left = tm.left - delta
+            if tm.left <= 0
+                n.emit("timeout", 0)
+                if tm.one_shot
+                    tm.running = false
+                else
+                    tm.left = tm.left + tm.wait
+                end
+            end
+        end
+        i = i + 1
+    end
+    # animations
+    i = 0
+    while i < t.animated.length
+        fragua_animate(t.animated[i], delta)
+        i = i + 1
+    end
+    fragua_tweens_update(delta)
+end
+
+func fragua_animate(n: Node, delta: Int)
+    s = n.sprite
+    if not s.playing
+        return
+    end
+    frames = s.anims[s.anim]
+    speed = s.speeds[s.anim]
+    s.tick = s.tick + delta
+    while s.tick >= speed
+        s.tick = s.tick - speed
+        s.pos = s.pos + 1
+        if s.pos >= frames.length
+            if s.loops[s.anim]
+                s.pos = 0
+            else
+                s.pos = frames.length - 1
+                s.playing = false
+                n.emit("animation_finished", 0)
+            end
+        end
+    end
+    s.frame = frames[s.pos]
+end
+
+func fragua_free_queued()
+    t = fragua_tree
+    while t.free_queue.length > 0
+        n = t.free_queue.pop()
+        if n.parent != nil
+            n.parent.remove_child(n)
+        elif n.in_tree
+            fragua_exit(n)
+        end
+        fragua_free(n)
+    end
+end
+
+func fragua_set_root(root: Node)
+    t = fragua_tree
+    old = t.root
+    if old != nil
+        fragua_exit(old)
+        fragua_free(old)
+    end
+    t.root = root
+    t.bg_dirty = true
+    if root != nil
+        fragua_enter(root)
+        fragua_ready(root)
+    end
+end
+
+# The main loop, until quit(). If no screen is open, a 320 x 256 one of 5 planes
+func run(root: Node)
+    t = fragua_tree
+    if fragua_screen == nil
+        if open_screen(320, 256, 5, "Fragua") == nil
+            Print "Fragua: the screen does not open"
+            return
+        end
+        t.own_screen = true
+    end
+    s = fragua_screen
+    t.screen = s
+    t.view_w = s.width
+    t.view_h = s.height
+    if not s.has_background
+        s.background(t.bg_pen)
+    end
+    t.clock = new_clock(50)
+    if not video_pal()
+        t.clock = new_clock(60)
+    end
+    fragua_set_root(root)
+    while not t.quitting
+        n = t.clock.tick()
+        t0 = time_ms()
+        s.begin()
+        fragua_input_update()
+        steps = n
+        if steps > t.max_steps
+            steps = t.max_steps
+        end
+        while steps > 0
+            fragua_physics_step()
+            steps = steps - 1
+        end
+        fragua_process(n)
+        fragua_signals()
+        fragua_free_queued()
+        if t.next_scene != nil
+            nr = t.next_scene
+            t.next_scene = nil
+            fragua_set_root(nr)
+        end
+        fragua_draw()
+        t.frames = t.frames + 1
+        if t.frames > 1
+            t.lost = t.lost + n - 1
+        end
+        w = time_ms() - t0
+        t.work = t.work + w
+        if w > t.worst
+            t.worst = w
+        end
+        if t.stop_after > 0 and t.frames >= t.stop_after
+            t.quitting = true
+        end
+        s.present()
+    end
+    fragua_set_root(nil)
+    if t.own_screen
+        fragua_close_screen(s)
+    end
+end
+
+# What Screen.close does (dash --gcc reads x.close() as a window's close, except at the top of Main)
+func fragua_close_screen(s: Screen)
+    if s.has_background
+        bitmap_free(FRAGUA_BACKGROUND)
+        s.has_background = false
+    end
+    screen_close()
+    fragua_screen = nil
+end

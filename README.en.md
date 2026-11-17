@@ -19,10 +19,10 @@ on an A500 it works with fewer things on screen.
 import "fragua/fragua.dash"
 
 Main
-    s = screen_open(320, 256, 5, "My game")
+    s = open_screen(320, 256, 5, "My game")
     s.background(0)
-    ship = sprite_new(image_load("ship.iff"), 160, 200)
-    clock = clock_new(50)
+    ship = new_sprite(load_image("ship.iff"), 160, 200)
+    clock = new_clock(50)
     while not key(KEY_ESC)
         n = clock.tick()
         s.begin()
@@ -43,7 +43,7 @@ end
 - **Image** (`image_load`, `image_new`): an IFF from Forja's sprite editor, with its frames, drawn with its mask
   (colour 0 transparent).
 - **Rect:** collisions, intersection, union, `clamp`.
-- **Clock** (`clock_new(50)`): `tick()` says how many frames went by (more than 1 if the game was late).
+- **Clock** (`new_clock(50)`): `tick()` says how many frames went by (more than 1 if the game was late).
 - **Input:** `key(KEY_ESC)` (a key held down now), `axis_x(1)`, `axis_y(1)` and `fire(1)` (joystick, or arrows and
   space).
 - **Sprite and Group:** image, rectangle, frame and speed; the group moves, draws, erases and finds collisions.

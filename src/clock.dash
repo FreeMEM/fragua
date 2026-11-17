@@ -2,7 +2,7 @@
 # after it, says how many frames went by since the last tick: 1 when the game keeps up, more when it was late (the
 # game then moves things that many steps and draws once: it loses smoothness, not speed).
 #
-#   clock = clock_new(50)      # 50 frames a second (PAL; 60 in NTSC)
+#   clock = new_clock(50)      # 50 frames a second (PAL; 60 in NTSC)
 #   n = clock.tick()
 #   clock.lost                 # frames lost so far
 
@@ -29,6 +29,6 @@ struct Clock
     end
 end
 
-func clock_new(rate: Int) -> Clock
+func new_clock(rate: Int) -> Clock
     return Clock(rate, 0, 0, 0)
 end

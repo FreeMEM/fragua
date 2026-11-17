@@ -1,0 +1,390 @@
+# What the tree draws: tile maps and labels on the background, the camera, and in each frame the sprites, the
+# labels on top and the particles, with dirty rectangles (only where something was is the background put back).
+#
+#   map = new_tilemap("Level", "level1.fmap")      # its tileset, the one the map names (or new_tilemap_with)
+#   cam = new_camera2d("Camera")
+#   cam.camera.target = player
+#   cam.camera.limit_w = map.map.width * map.map.tile
+#   set_view(0, 16, 320, 240)                      # where the world shows (the rest: the score, ui nodes)
+#
+# The camera goes a screen at a time: when its target leaves the view, the view jumps to the next one and the
+# background is drawn again (two frames). Dash has no hardware scroll yet (docs/FRAGUA_LOOP.md).
+
+import "tree.dash"
+
+# Collision tiles: the cells of a collision layer (type 1 in Forja's map editor)
+const TILE_EMPTY = 0
+const TILE_SOLID = 1
+const TILE_PLATFORM = 2           # crossed from below, stood on from above
+const TILE_LADDER = 3
+const TILE_DAMAGE = 4
+const TILE_SLOPE_UP = 5           # a slope going up to the right: /
+const TILE_SLOPE_DOWN = 6         # going down to the right: \
+
+var fragua_map_used: [Bool] = []
+
+func fragua_map_slot() -> Int
+    if fragua_map_used.length == 0
+        i = 0
+        while i < 8
+            fragua_map_used.push(false)
+            i = i + 1
+        end
+    end
+    i = 0
+    while i < 8
+        if not fragua_map_used[i]
+            return i
+        end
+        i = i + 1
+    end
+    return -1
+end
+
+# Images loaded once by file name (a scene instanced ten times shares its pictures)
+var fragua_images: {String: Image} = {}
+
+func image_cached(file: String) -> Image
+    img = fragua_images.get(file, nil)
+    if img == nil
+        img = load_image(file)
+        if img != nil
+            fragua_images[file] = img
+        end
+    end
+    return img
+end
+
+# A tile map of Forja's map editor (.fmap) with the tileset it names. nil if one of them cannot be loaded.
+func new_tilemap(name: String, file: String) -> Node
+    return new_tilemap_with(name, file, "")
+end
+
+# The same with another tileset (an IFF of Forja's sprite editor: one frame a tile)
+func new_tilemap_with(name: String, file: String, tileset: String) -> Node
+    id = fragua_map_slot()
+    if id < 0 or not tilemap_load(id, file)
+        return nil
+    end
+    if tileset == ""
+        tileset = tilemap_tileset(id)
+    end
+    img = image_cached(tileset)
+    if img == nil
+        tilemap_free(id)
+        return nil
+    end
+    fragua_map_used[id] = true
+    n = Node(name, TILEMAP)
+    m = MapData(id, img)
+    m.tile = tilemap_tile_size(id)
+    m.width = tilemap_width(id)
+    m.height = tilemap_height(id)
+    l = 0
+    while l < tilemap_layers(id)
+        if tilemap_layer_type(id, l) == 1 and m.collision < 0
+            m.collision = l
+        end
+        l = l + 1
+    end
+    n.map = m
+    return n
+end
+
+# The collision tile at a world point (TILE_SOLID...), of the first map with a collision layer there
+func tile_at(wx: Int, wy: Int) -> Int
+    for n in fragua_tree.maps
+        m = n.map
+        if m.collision >= 0
+            mx = wx - n.global_x()
+            my = wy - n.global_y()
+            if mx >= 0 and my >= 0
+                v = tilemap_get(m.id, m.collision, mx / m.tile, my / m.tile) & 0x3FFF
+                if v != 0
+                    return v
+                end
+            end
+        end
+    end
+    return 0
+end
+
+# Where the world shows on the screen (the rest stays for ui nodes: a score bar)
+func set_view(x: Int, y: Int, w: Int, h: Int)
+    t = fragua_tree
+    t.view_x = x
+    t.view_y = y
+    t.view_w = w
+    t.view_h = h
+    t.bg_dirty = true
+end
+
+# The colour of the background where there is no map
+func set_background_color(pen: Int)
+    fragua_tree.bg_pen = pen
+    fragua_tree.bg_dirty = true
+end
+
+# A world point on the screen
+func screen_x(wx: Int) -> Int
+    return wx - fragua_tree.cam_x + fragua_tree.view_x
+end
+
+func screen_y(wy: Int) -> Int
+    return wy - fragua_tree.cam_y + fragua_tree.view_y
+end
+
+# --- the camera: a screen at a time ---
+
+func fragua_camera_update()
+    t = fragua_tree
+    if t.camera == nil or t.camera.camera.target == nil
+        return
+    end
+    c = t.camera.camera
+    c.view_w = t.view_w
+    c.view_h = t.view_h
+    tg = c.target
+    fragua_box(tg)
+    px = fragua_bx + fragua_bw / 2
+    py = fragua_by + fragua_bh / 2
+    cx = c.cx
+    cy = c.cy
+    while px < cx and cx > 0
+        cx = cx - c.view_w
+    end
+    while px >= cx + c.view_w
+        cx = cx + c.view_w
+    end
+    while py < cy and cy > 0
+        cy = cy - c.view_h
+    end
+    while py >= cy + c.view_h
+        cy = cy + c.view_h
+    end
+    if c.limit_w > 0 and cx + c.view_w > c.limit_w
+        cx = c.limit_w - c.view_w
+    end
+    if c.limit_h > 0 and cy + c.view_h > c.limit_h
+        cy = c.limit_h - c.view_h
+    end
+    if cx < 0
+        cx = 0
+    end
+    if cy < 0
+        cy = 0
+    end
+    c.cx = cx
+    c.cy = cy
+    if cx != t.cam_x or cy != t.cam_y
+        t.cam_x = cx
+        t.cam_y = cy
+        t.bg_dirty = true
+    end
+end
+
+# --- the background: the maps and the labels painted on it ---
+
+func fragua_draw_map(n: Node)
+    t = fragua_tree
+    m = n.map
+    ts = m.tile
+    mx = n.global_x()
+    my = n.global_y()
+    # the cells in the view, whole ones only (bob_paste and tilemap_draw do not clip)
+    tx = (t.cam_x - mx + ts - 1) / ts
+    ty = (t.cam_y - my + ts - 1) / ts
+    if t.cam_x - mx < 0
+        tx = 0
+    end
+    if t.cam_y - my < 0
+        ty = 0
+    end
+    sx = mx + tx * ts - t.cam_x + t.view_x
+    sy = my + ty * ts - t.cam_y + t.view_y
+    tw = (t.view_x + t.view_w - sx) / ts
+    th = (t.view_y + t.view_h - sy) / ts
+    if tx + tw > m.width
+        tw = m.width - tx
+    end
+    if ty + th > m.height
+        th = m.height - ty
+    end
+    if tw <= 0 or th <= 0
+        return
+    end
+    first = true
+    l = 0
+    while l < tilemap_layers(m.id)
+        if tilemap_layer_type(m.id, l) == 0 and tilemap_layer_visible(m.id, l)
+            if first or (m.front >= 0 and l >= m.front)
+                tilemap_draw(m.id, l, m.tileset.id, tx, ty, tw, th, sx, sy)
+            else
+                tilemap_draw_masked(m.id, l, m.tileset.id, tx, ty, tw, th, sx, sy)
+            end
+            first = false
+        end
+        l = l + 1
+    end
+end
+
+func fragua_background()
+    t = fragua_tree
+    s = t.screen
+    bitmap_draw_to(FRAGUA_BACKGROUND)
+    gfx_pen(t.bg_pen)
+    gfx_rect(0, 0, s.width - 1, s.height - 1)
+    for n in t.maps
+        if fragua_shown(n)
+            fragua_draw_map(n)
+        end
+    end
+    bitmap_draw_screen()
+    for n in t.labels
+        n.label.dirty = true
+        n.label.shown = ""
+        n.label.shown_w = 0
+    end
+    s.pending = 2
+    t.bg_dirty = false
+end
+
+# The labels on the background: painted again only when their text changes
+func fragua_labels()
+    t = fragua_tree
+    s = t.screen
+    for n in t.labels
+        lb = n.label
+        if lb.bind != ""
+            v = lb.prefix + "#{game_get(lb.bind)}"
+            if v != lb.text
+                lb.text = v
+                lb.dirty = true
+            end
+        end
+        if lb.dirty
+            lb.dirty = false
+            x = n.global_x()
+            y = n.global_y()
+            if not n.ui
+                x = screen_x(x)
+                y = screen_y(y)
+            end
+            text = lb.text
+            if not fragua_shown(n)
+                text = ""
+            end
+            w = font_text_width(text)
+            h = font_height()
+            if w < lb.shown_w
+                w = lb.shown_w
+            end
+            if x >= 0 and y >= 0 and x + w <= s.width and y + h <= s.height
+                bitmap_draw_to(FRAGUA_BACKGROUND)
+                gfx_pen(lb.bg)
+                if w > 0
+                    gfx_rect(x, y, x + w - 1, y + h - 1)
+                end
+                if text != ""
+                    gfx_pen(lb.pen)
+                    gfx_text_at(x, y + font_baseline(), text)
+                end
+                bitmap_draw_screen()
+                if w > 0
+                    s.refresh(x, y, w, h)
+                end
+                lb.shown = text
+                lb.shown_w = font_text_width(text)
+            end
+        end
+    end
+end
+
+# Shown: it and all its parents are visible
+func fragua_shown(n: Node) -> Bool
+    var p: Node = n
+    while p != nil
+        if not p.visible
+            return false
+        end
+        p = p.parent
+    end
+    return true
+end
+
+# --- each frame ---
+
+func fragua_draw_node(n: Node)
+    t = fragua_tree
+    s = t.screen
+    x = n.global_x()
+    y = n.global_y()
+    if not n.ui
+        x = x - t.cam_x + t.view_x
+        y = y - t.cam_y + t.view_y
+    end
+    if n.sprite != nil
+        sp = n.sprite
+        x = x + sp.ox
+        y = y + sp.oy
+        shown = fragua_shown(n)
+        if sp.hw >= 0
+            inside = x >= t.view_x and y >= t.view_y and x + 16 <= t.view_x + t.view_w and y + sp.height <= t.view_y + t.view_h
+            if shown and (inside or n.ui)
+                sprite_pos(sp.hw, x, y)
+                sprite_frame(sp.hw, sp.frame)
+                if not sp.shown
+                    sprite_show(sp.hw)
+                    sp.shown = true
+                end
+            elif sp.shown
+                sprite_hide(sp.hw)
+                sp.shown = false
+            end
+            return
+        end
+        if not shown or sp.image == nil
+            return
+        end
+        w = sp.image.width
+        h = sp.image.height
+        # whole inside its part of the screen, or not drawn (bob_paste does not clip)
+        if n.ui
+            if x < 0 or y < 0 or x + w > s.width or y + h > s.height
+                return
+            end
+        elif x < t.view_x or y < t.view_y or x + w > t.view_x + t.view_w or y + h > t.view_y + t.view_h
+            return
+        end
+        bob_paste(sp.image.id, sp.frame, x, y)
+        s.mark(x, y, w, h)
+    elif n.label != nil
+        if fragua_shown(n) and n.label.text != ""
+            w = font_text_width(n.label.text)
+            h = font_height()
+            if x >= 0 and y >= 0 and x + w <= s.width and y + h <= s.height
+                gfx_pen(n.label.pen)
+                gfx_text_at(x, y + font_baseline(), n.label.text)
+                s.mark(x, y, w, h)
+            end
+        end
+    elif n.particles != nil
+        fragua_particles_draw(n, x, y)
+    end
+end
+
+func fragua_draw()
+    t = fragua_tree
+    s = t.screen
+    fragua_camera_update()
+    if t.bg_dirty
+        fragua_background()
+        s.begin()
+    end
+    fragua_labels()
+    i = 0
+    while i < t.visuals.length
+        fragua_draw_node(t.visuals[i])
+        i = i + 1
+    end
+end

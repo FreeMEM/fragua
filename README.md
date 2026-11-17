@@ -19,10 +19,10 @@ A500 funciona con menos cosas en pantalla.
 import "fragua/fragua.dash"
 
 Main
-    s = screen_open(320, 256, 5, "Mi juego")
+    s = open_screen(320, 256, 5, "Mi juego")
     s.background(0)
-    nave = sprite_new(image_load("nave.iff"), 160, 200)
-    clock = clock_new(50)
+    nave = new_sprite(load_image("nave.iff"), 160, 200)
+    clock = new_clock(50)
     while not key(KEY_ESC)
         n = clock.tick()
         s.begin()
@@ -43,7 +43,7 @@ end
 - **Imagen** (`image_load`, `image_new`): un IFF del editor de sprites de Forja, con sus fotogramas, que se pinta con
   máscara (el color 0, transparente).
 - **Rect:** choques, intersección, unión, `clamp`.
-- **Reloj** (`clock_new(50)`): `tick()` dice cuántos fotogramas pasaron (más de 1 si el juego se retrasó).
+- **Reloj** (`new_clock(50)`): `tick()` dice cuántos fotogramas pasaron (más de 1 si el juego se retrasó).
 - **Entrada:** `key(KEY_ESC)` (tecla pulsada ahora), `axis_x(1)`, `axis_y(1)` y `fire(1)` (joystick o flechas y
   espacio).
 - **Sprite y Group:** imagen, rectángulo, fotograma y velocidad; el grupo mueve, pinta, borra y busca choques.

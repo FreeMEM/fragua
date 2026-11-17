@@ -1,0 +1,77 @@
+# The tree without a screen: children, paths, groups, ready order, signals and queue_free. Ends with "TODO BIEN".
+
+import "../fragua.dash"
+
+var fallos: Int = 0
+var orden: String = ""
+var oidas: String = ""
+
+func ver(paso: String, cierto: Bool)
+    if cierto
+        Print "bien: " + paso
+    else
+        Print "FALLO: " + paso
+        fallos = fallos + 1
+    end
+end
+
+struct Oye: Script
+    veces: Int = 0       # (un struct sin campos cuelga al liberarse: fallo de Dash, docs/FRAGUA_LOOP.md)
+    func ready(n: Node)
+        orden = orden + n.name + " "
+    end
+    func process(n: Node, delta: Int)
+    end
+    func physics_process(n: Node)
+    end
+    func on_signal(n: Node, name: String, from: Node, data: Int)
+        oidas = oidas + n.name + ":" + name + ":" + from.name + ":#{data} "
+    end
+end
+
+Main
+    root = new_node("Nivel")
+    root.script = Oye()
+    jug = new_body2d("Jugador", 10, 20)
+    jug.script = Oye()
+    arma = new_node2d("Arma", 4, 2)
+    arma.script = Oye()
+    jug.add_child(arma)
+    root.add_child(jug)
+    ver("ruta", root.get_node("Jugador/Arma") == arma)
+    ver("ruta con ..", arma.get_node("../..") == root and arma.get_node("..") == jug)
+    ver("ruta que no está", root.get_node("Jugador/Nada") == nil)
+    ver("find", root.find("Arma") == arma)
+    ver("posición global", arma.global_x() == 14 and arma.global_y() == 22)
+    fragua_set_root(root)
+    ver("ready de hijos antes: " + orden, orden == "Arma Jugador Nivel ")
+    for i in (1..3)
+        e = new_node2d("Enemigo", i * 10, 0)
+        e.add_to_group("enemies")
+        root.add_child(e)
+    end
+    ver("grupo", get_nodes_in_group("enemies").length == 3)
+    ver("ids", node_by_id(jug.id) == jug and jug.id > 0)
+    jug.connect("hit", root)
+    jug.emit("hit", 7)
+    ver("la señal espera al fin del fotograma", oidas == "")
+    fragua_signals()
+    ver("señal: " + oidas, oidas == "Jugador:hit:Jugador:7 Nivel:hit:Jugador:7 ")
+    e0 = get_nodes_in_group("enemies")[0]
+    e0.queue_free()
+    ver("queue_free espera", get_nodes_in_group("enemies").length == 3)
+    fragua_free_queued()
+    ver("queue_free", get_nodes_in_group("enemies").length == 2 and root.children.length == 3)
+    root.remove_child(jug)
+    ver("remove_child saca del árbol", not jug.in_tree and not arma.in_tree and node_by_id(jug.id) == nil)
+    root.add_child(jug)
+    ver("vuelve a entrar sin otro ready", jug.in_tree and orden == "Arma Jugador Nivel ")
+    game_add("score", 10)
+    game_add("score", 5)
+    ver("variables del juego", game_get("score") == 15)
+    fragua_set_root(nil)
+    ver("árbol vacío", not root.in_tree and fragua_tree.scripted.length == 0)
+    if fallos == 0
+        Print "TODO BIEN"
+    end
+end

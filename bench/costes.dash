@@ -11,26 +11,26 @@ func ms(t0: Int, n: Int) -> String
 end
 
 Main
-    s = screen_open(320, 256, 5, "Costes")
+    s = open_screen(320, 256, 5, "Costes")
     if s == nil
         Print "no abre la pantalla"
     else
-        img16 = image_new(16, 16, 1, 5)
+        img16 = new_image(16, 16, 1, 5)
         img16.paint_start()
         gfx_pen(7)
         gfx_rect(2, 2, 13, 13)
         img16.paint_end()
-        img32 = image_new(32, 32, 1, 5)
+        img32 = new_image(32, 32, 1, 5)
         img32.paint_start()
         gfx_pen(9)
         gfx_rect(2, 2, 29, 29)
         img32.paint_end()
         a = Rect(10, 10, 16, 16)
         b = Rect(20, 20, 16, 16)
-        g = group_new()
+        g = new_group()
         i = 0
         while i < 20
-            g.add(sprite_new(img16, i * 15, 100))
+            g.add(new_sprite(img16, i * 15, 100))
             i = i + 1
         end
         r = ""

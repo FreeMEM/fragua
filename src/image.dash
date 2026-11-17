@@ -2,27 +2,27 @@
 # drawn with its mask: colour 0 is transparent. It is a BOB of Dash; Fragua uses BOBs 0 to 19 (Forja's map editor
 # uses 20 and up).
 #
-#   img = image_load("ball.iff")          # nil if it cannot be read
-#   img = image_new(16, 16, 1, 5)         # an empty one: 16 x 16, 1 frame, 5 planes
+#   img = load_image("ball.iff")          # nil if it cannot be read
+#   img = new_image(16, 16, 1, 5)         # an empty one: 16 x 16, 1 frame, 5 planes
 #   img.paint_start() ... gfx_* ... img.paint_end()   # draw into it with gfx_*
 #   img.draw(x, y, frame)
 #   img.free()
 
 const FRAGUA_IMAGES = 20
 
-var _fragua_image_used: [Bool] = []
+var fragua_image_used: [Bool] = []
 
-func _fragua_image_slot() -> Int
-    if _fragua_image_used.length == 0
+func fragua_image_slot() -> Int
+    if fragua_image_used.length == 0
         i = 0
         while i < FRAGUA_IMAGES
-            _fragua_image_used.push(false)
+            fragua_image_used.push(false)
             i = i + 1
         end
     end
     i = 0
     while i < FRAGUA_IMAGES
-        if not _fragua_image_used[i]
+        if not fragua_image_used[i]
             return i
         end
         i = i + 1
@@ -52,28 +52,28 @@ struct Image
     func free()
         if self.id >= 0
             bob_free(self.id)
-            _fragua_image_used[self.id] = false
+            fragua_image_used[self.id] = false
             self.id = -1
         end
     end
 end
 
-func image_load(file: String) -> Image
-    i = _fragua_image_slot()
+func load_image(file: String) -> Image
+    i = fragua_image_slot()
     if i < 0 or not bob_load(i, file)
         return nil
     end
-    _fragua_image_used[i] = true
+    fragua_image_used[i] = true
     return Image(i, bob_width(i), bob_height(i), bob_frames(i))
 end
 
 # An empty image (all colour 0) of frames frames of width x height, with depth planes
-func image_new(width: Int, height: Int, frames: Int, depth: Int) -> Image
-    i = _fragua_image_slot()
+func new_image(width: Int, height: Int, frames: Int, depth: Int) -> Image
+    i = fragua_image_slot()
     if i < 0 or not bob_create(i, width * frames, height, depth)
         return nil
     end
     bob_frame_width(i, width)
-    _fragua_image_used[i] = true
+    fragua_image_used[i] = true
     return Image(i, width, height, frames)
 end

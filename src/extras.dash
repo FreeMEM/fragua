@@ -1,0 +1,373 @@
+# Input actions, game variables, sound, particles and tweens.
+#
+#   if action_pressed("left") ...         # held now (keys or joystick)
+#   if action_just_pressed("jump") ...    # pressed in this frame
+#   action_add("shoot", KEY_RETURN)       # more keys (or JOY_FIRE...) for an action
+#   game_add("score", 10)                 # game variables: labels show them (label.bind)
+#   coin = new_audio("Coin", "coin.8svx", -1)    coin.play()
+#   play_music("song.mod")
+#   tween(door, "y", 40, 25)              # y to 40 in 25 frames; "tween_finished" at the end
+
+import "tree.dash"
+import "input.dash"
+
+# --- input actions ---
+
+const JOY_LEFT = 0x1001           # the joystick in port 1, as "keys" of an action
+const JOY_RIGHT = 0x1002
+const JOY_UP = 0x1003
+const JOY_DOWN = 0x1004
+const JOY_FIRE = 0x1005
+
+var fragua_actions: {String: [Int]} = {}
+var fragua_now: {String: Bool} = {}
+var fragua_before: {String: Bool} = {}
+var fragua_forced: {String: Bool} = {}
+
+func action_add(name: String, code: Int)
+    if not fragua_actions.has(name)
+        var l: [Int] = []
+        fragua_actions[name] = l
+        fragua_now[name] = false
+        fragua_before[name] = false
+    end
+    fragua_actions[name].push(code)
+end
+
+func fragua_default_actions()
+    action_add("left", KEY_LEFT)
+    action_add("left", KEY_A)
+    action_add("left", JOY_LEFT)
+    action_add("right", KEY_RIGHT)
+    action_add("right", KEY_D)
+    action_add("right", JOY_RIGHT)
+    action_add("up", KEY_UP)
+    action_add("up", KEY_W)
+    action_add("up", JOY_UP)
+    action_add("down", KEY_DOWN)
+    action_add("down", KEY_S)
+    action_add("down", JOY_DOWN)
+    action_add("jump", KEY_SPACE)
+    action_add("jump", JOY_FIRE)
+    action_add("fire", KEY_SPACE)
+    action_add("fire", JOY_FIRE)
+    action_add("pause", KEY_P)
+    action_add("quit", KEY_ESC)
+end
+
+func fragua_code_down(c: Int) -> Bool
+    if c < 0x1000
+        return key_down(c)
+    end
+    if c == JOY_LEFT
+        return joy_left(1)
+    elif c == JOY_RIGHT
+        return joy_right(1)
+    elif c == JOY_UP
+        return joy_up(1)
+    elif c == JOY_DOWN
+        return joy_down(1)
+    end
+    return joy_fire(1)
+end
+
+# Once a frame, before the physics (the tree calls it)
+func fragua_input_update()
+    if fragua_actions.length == 0
+        fragua_default_actions()
+    end
+    for name in fragua_actions.keys()
+        fragua_before[name] = fragua_now[name]
+        down = fragua_forced.get(name, false)
+        if not down
+            for c in fragua_actions[name]
+                if not down and fragua_code_down(c)
+                    down = true
+                end
+            end
+        end
+        fragua_now[name] = down
+    end
+end
+
+func action_pressed(name: String) -> Bool
+    return fragua_now.get(name, false)
+end
+
+func action_just_pressed(name: String) -> Bool
+    return fragua_now.get(name, false) and not fragua_before.get(name, false)
+end
+
+func action_just_released(name: String) -> Bool
+    return fragua_before.get(name, false) and not fragua_now.get(name, false)
+end
+
+# -1, 0 or 1 from two actions ("left", "right")
+func action_axis(neg: String, pos: String) -> Int
+    v = 0
+    if action_pressed(neg)
+        v = v - 1
+    end
+    if action_pressed(pos)
+        v = v + 1
+    end
+    return v
+end
+
+# Held down by the program (a demo, a test, a computer player) until released with false
+func action_force(name: String, down: Bool)
+    fragua_forced[name] = down
+end
+
+# --- game variables (score, lives, time): labels with bind show them ---
+
+var game_vars: {String: Int} = {}
+
+func game_get(name: String) -> Int
+    return game_vars.get(name, 0)
+end
+
+func game_set(name: String, v: Int)
+    game_vars[name] = v
+end
+
+func game_add(name: String, v: Int)
+    game_vars[name] = game_vars.get(name, 0) + v
+end
+
+# A label that shows prefix + the value of a game variable, kept up to date
+func bind_label(n: Node, prefix: String, var_name: String)
+    if n.label != nil
+        n.label.prefix = prefix
+        n.label.bind = var_name
+    end
+end
+
+# --- sound ---
+
+var fragua_sounds: {String: Int} = {}
+var fragua_sound_next: Int = 0
+
+# A sound (IFF 8SVX) loaded once by file name: its number, or -1
+func sound_cached(file: String) -> Int
+    id = fragua_sounds.get(file, -1)
+    if id < 0 and fragua_sound_next < 32
+        if sound_load(fragua_sound_next, file)
+            id = fragua_sound_next
+            fragua_sounds[file] = id
+            fragua_sound_next = fragua_sound_next + 1
+        end
+    end
+    return id
+end
+
+# A sound effect: play() sounds it in its channel (0 to 3), or in the first one not sounding with -1
+func new_audio(name: String, file: String, channel: Int) -> Node
+    n = Node(name, AUDIO)
+    n.audio = AudioData(sound_cached(file), channel)
+    return n
+end
+
+func fragua_audio_play(n: Node)
+    a = n.audio
+    if a.sound < 0
+        return
+    end
+    ch = a.channel
+    if ch < 0
+        ch = 3
+        i = 0
+        while i < 4
+            if not sound_playing(i) and not (fragua_music_on and i < 4 and fragua_music_channels > i)
+                ch = i
+                i = 4
+            end
+            i = i + 1
+        end
+    end
+    sound_volume(ch, a.volume)
+    sound_play(a.sound, ch)
+end
+
+# A sound by file name, in the first free channel (for actions without an AudioPlayer node)
+func play_sound(file: String)
+    id = sound_cached(file)
+    if id >= 0
+        ch = 3
+        i = 0
+        while i < 4
+            if not sound_playing(i)
+                ch = i
+                i = 4
+            end
+            i = i + 1
+        end
+        sound_play(id, ch)
+    end
+end
+
+var fragua_music_on: Bool = false
+var fragua_music_channels: Int = 0    # channels kept for the music (0: the effects use any)
+
+func play_music(file: String) -> Bool
+    if not music_load(file)
+        return false
+    end
+    music_play()
+    fragua_music_on = true
+    return true
+end
+
+func stop_music()
+    music_stop()
+    fragua_music_on = false
+end
+
+# --- particles: a few dots in the CPU ---
+
+func new_particles2d(name: String, x: Int, y: Int, amount: Int, pen: Int) -> Node
+    n = Node(name, PARTICLES2D)
+    n.set_pos(x, y)
+    n.particles = ParticlesData()
+    n.particles.amount = amount
+    n.particles.pen = pen
+    return n
+end
+
+func fragua_particles_burst(n: Node)
+    p = n.particles
+    gx = n.global_x() * 16
+    gy = n.global_y() * 16
+    i = 0
+    while i < p.amount
+        p.px.push(gx)
+        p.py.push(gy)
+        p.pvx.push(random_range(0 - p.speed, p.speed))
+        p.pvy.push(random_range(0 - p.speed - p.speed / 2, p.speed / 2))
+        p.life.push(p.lifetime - random_range(0, p.lifetime / 3))
+        i = i + 1
+    end
+    if not p.one_shot
+        p.emitting = true
+    end
+end
+
+# Moves them one frame and draws them (x, y: where the node is on the screen; the dots are in the world)
+func fragua_particles_draw(n: Node, x: Int, y: Int)
+    t = fragua_tree
+    s = t.screen
+    p = n.particles
+    if p.emitting and p.px.length < p.amount
+        fragua_particles_burst(n)
+    end
+    gfx_pen(p.pen)
+    i = p.px.length - 1
+    while i >= 0
+        p.life[i] = p.life[i] - 1
+        if p.life[i] <= 0
+            p.px.remove(i)
+            p.py.remove(i)
+            p.pvx.remove(i)
+            p.pvy.remove(i)
+            p.life.remove(i)
+        else
+            p.pvy[i] = p.pvy[i] + p.gravity
+            p.px[i] = p.px[i] + p.pvx[i]
+            p.py[i] = p.py[i] + p.pvy[i]
+            sx = p.px[i] / 16
+            sy = p.py[i] / 16
+            if not n.ui
+                sx = sx - t.cam_x + t.view_x
+                sy = sy - t.cam_y + t.view_y
+            end
+            if sx >= t.view_x and sy >= t.view_y and sx + p.size <= t.view_x + t.view_w and sy + p.size <= t.view_y + t.view_h
+                gfx_rect(sx, sy, sx + p.size - 1, sy + p.size - 1)
+                s.mark(sx, sy, p.size, p.size)
+            end
+        end
+        i = i - 1
+    end
+end
+
+# --- tweens: a property towards a value in so many frames ---
+
+const EASE_LINEAR = 0
+const EASE_IN = 1                 # slow at the start
+const EASE_OUT = 2                # slow at the end
+
+struct Tween
+    node: Node
+    prop: String
+    from: Int
+    to: Int
+    frames: Int
+    t: Int = 0
+    ease: Int = 0
+end
+
+var fragua_tweens: [Tween] = []
+
+func fragua_prop_get(n: Node, prop: String) -> Int
+    if prop == "x"
+        return n.x
+    elif prop == "y"
+        return n.y
+    elif prop == "z_index"
+        return n.z_index
+    elif prop == "frame" and n.sprite != nil
+        return n.sprite.frame
+    end
+    return 0
+end
+
+func fragua_prop_set(n: Node, prop: String, v: Int)
+    if prop == "x"
+        n.x = v
+    elif prop == "y"
+        n.y = v
+    elif prop == "z_index"
+        n.set_z_index(v)
+    elif prop == "frame" and n.sprite != nil
+        n.sprite.frame = v
+    end
+end
+
+# prop ("x", "y", "z_index", "frame") from what it is now to `to` in so many video frames
+func tween(n: Node, prop: String, to: Int, frames: Int)
+    tween_ease(n, prop, to, frames, EASE_LINEAR)
+end
+
+func tween_ease(n: Node, prop: String, to: Int, frames: Int, ease: Int)
+    if frames < 1
+        frames = 1
+    end
+    fragua_tweens.push(Tween(n, prop, fragua_prop_get(n, prop), to, frames, 0, ease))
+end
+
+func fragua_tweens_update(delta: Int)
+    i = fragua_tweens.length - 1
+    while i >= 0
+        tw = fragua_tweens[i]
+        if tw.node.dead
+            fragua_tweens.remove(i)
+        else
+            tw.t = tw.t + delta
+            if tw.t >= tw.frames
+                tw.t = tw.frames
+            end
+            # k from 0 to 1024
+            k = tw.t * 1024 / tw.frames
+            if tw.ease == EASE_IN
+                k = k * k / 1024
+            elif tw.ease == EASE_OUT
+                k = 1024 - (1024 - k) * (1024 - k) / 1024
+            end
+            fragua_prop_set(tw.node, tw.prop, tw.from + (tw.to - tw.from) * k / 1024)
+            if tw.t >= tw.frames
+                fragua_tweens.remove(i)
+                tw.node.emit("tween_finished", 0)
+            end
+        end
+        i = i - 1
+    end
+end

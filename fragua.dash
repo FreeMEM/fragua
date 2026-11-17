@@ -1,9 +1,11 @@
-# Fragua: a library for making games in Dash on the Amiga. Layer 1, loose pieces as in pygame: the screen, images,
-# rectangles, the clock, input, sprites and groups. (Layer 2, nodes and scenes as in Godot, comes later.)
+# Fragua: a library for making games in Dash on the Amiga.
+#   Layer 1, loose pieces as in pygame: the screen, images, rectangles, the clock, input, sprites and groups.
+#   Layer 2, nodes and scenes as in Godot: the tree, signals, sprites, bodies, areas, tile maps, the camera,
+#   labels, timers, sound, particles, tweens and ready-made behaviours.
 #
 #   import "fragua/fragua.dash"
 #
-# Needs a Dash with key_down, bob_paste and bob_width / bob_height / bob_frames.
+# Needs a Dash with key_down, bob_paste and bob_width / bob_height / bob_frames (2.0 or later).
 
 import "src/rect.dash"
 import "src/screen.dash"
@@ -11,3 +13,8 @@ import "src/image.dash"
 import "src/clock.dash"
 import "src/input.dash"
 import "src/sprite.dash"
+import "src/node.dash"
+import "src/tree.dash"
+import "src/world.dash"
+import "src/physics.dash"
+import "src/extras.dash"
