@@ -142,6 +142,6 @@ Main
         end
         paddle_img.free()
         ball_img.free()
-        s.close()
+        close_screen(s)
     end
 end

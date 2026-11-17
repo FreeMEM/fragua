@@ -1054,6 +1054,169 @@
      "en": "Stopped blinking"
     }
    ]
+  },
+  "Vehicle": {
+   "es": "Coche o moto de lado: acelera, frena, inercia, marchas, salta; avisa si aterriza demasiado rápido.",
+   "en": "Side-view car or motorbike: accelerates, brakes, inertia, gears, jumps; tells when it lands too fast.",
+   "props": {
+    "accel": {
+     "type": "Fixed",
+     "default": 0.08,
+     "es": "Aceleración por paso",
+     "en": "Acceleration a step",
+     "set": "b.accel",
+     "min": 0,
+     "max": 2
+    },
+    "brake": {
+     "type": "Fixed",
+     "default": 0.2,
+     "es": "Frenada",
+     "en": "Braking",
+     "set": "b.brake",
+     "min": 0,
+     "max": 2
+    },
+    "drag": {
+     "type": "Fixed",
+     "default": 0.02,
+     "es": "Rozamiento sin mando",
+     "en": "Drag without input",
+     "set": "b.drag",
+     "min": 0,
+     "max": 2
+    },
+    "gears": {
+     "type": "Int",
+     "default": 3,
+     "es": "Marchas",
+     "en": "Gears",
+     "set": "b.gears",
+     "min": 1,
+     "max": 6
+    },
+    "gear_speed": {
+     "type": "Fixed",
+     "default": 1.5,
+     "es": "Velocidad máxima por marcha",
+     "en": "Top speed per gear",
+     "set": "b.gear_speed",
+     "min": 0,
+     "max": 8
+    },
+    "gravity": {
+     "type": "Fixed",
+     "default": 0.3,
+     "es": "Gravedad",
+     "en": "Gravity",
+     "set": "b.gravity",
+     "min": 0,
+     "max": 4
+    },
+    "jump": {
+     "type": "Fixed",
+     "default": 5,
+     "es": "Fuerza del salto",
+     "en": "Jump speed",
+     "set": "b.jump",
+     "min": 0,
+     "max": 16
+    },
+    "crash_speed": {
+     "type": "Int",
+     "default": 96,
+     "es": "Velocidad de caída que estrella (1/16 de píxel)",
+     "en": "Falling speed that crashes (1/16 pixel)",
+     "set": "b.crash_speed",
+     "min": 0,
+     "max": 512
+    },
+    "player": {
+     "type": "Bool",
+     "default": true,
+     "es": "Lo lleva el jugador",
+     "en": "Driven by the player",
+     "set": "b.player"
+    }
+   },
+   "signals": [
+    {
+     "name": "gear",
+     "es": "Cambió de marcha (data: la marcha)",
+     "en": "Changed gear (data: the gear)"
+    },
+    {
+     "name": "jumped",
+     "es": "Saltó",
+     "en": "Jumped"
+    },
+    {
+     "name": "crashed",
+     "es": "Aterrizó demasiado rápido (data: velocidad)",
+     "en": "Landed too fast (data: speed)"
+    }
+   ]
+  },
+  "Sine": {
+   "es": "Sube y baja (o va y viene) alrededor de donde empezó.",
+   "en": "Goes up and down (or to and fro) around where it started.",
+   "props": {
+    "amplitude": {
+     "type": "Int",
+     "default": 8,
+     "es": "Cuánto se aparta (píxeles)",
+     "en": "How far it goes (pixels)",
+     "set": "b.amplitude",
+     "min": 0,
+     "max": 320
+    },
+    "period": {
+     "type": "Int",
+     "default": 100,
+     "es": "Fotogramas por vuelta",
+     "en": "Frames a turn",
+     "set": "b.period",
+     "min": 2,
+     "max": 10000
+    },
+    "horizontal": {
+     "type": "Bool",
+     "default": false,
+     "es": "Va y viene en x",
+     "en": "To and fro in x",
+     "set": "b.horizontal"
+    }
+   },
+   "signals": []
+  },
+  "Shooter": {
+   "es": "Emite \"shoot\" cada cierto tiempo o al pulsar una acción; un evento crea la bala (acción spawn).",
+   "en": "Emits \"shoot\" every so often or when an action is pressed; an event makes the bullet (spawn action).",
+   "props": {
+    "every": {
+     "type": "Int",
+     "default": 25,
+     "es": "Fotogramas entre disparos",
+     "en": "Frames between shots",
+     "set": "b.every",
+     "min": 1,
+     "max": 1000
+    },
+    "action": {
+     "type": "String",
+     "default": "",
+     "es": "Acción que dispara (vacío: solo)",
+     "en": "Action that shoots (empty: by itself)",
+     "set": "b.action"
+    }
+   },
+   "signals": [
+    {
+     "name": "shoot",
+     "es": "Toca disparar",
+     "en": "Time to shoot"
+    }
+   ]
   }
  },
  "actions": {
@@ -1182,5 +1345,304 @@
    "en": "Hand-written Dash"
   }
  },
- "functions": []
+ "functions": [
+  {
+   "group": "tree",
+   "sig": "run(root: Node)",
+   "es": "El bucle del juego hasta quit(): física a paso fijo, process, señales, dibujo. Abre una pantalla de 320x256 y 5 planos si no hay ninguna.",
+   "en": "The game loop until quit(): fixed-step physics, process, signals, drawing. Opens a 320x256 screen of 5 planes if none is open.",
+   "example": "run(scene_level1())"
+  },
+  {
+   "group": "tree",
+   "sig": "quit()",
+   "es": "Acaba run() al final del fotograma.",
+   "en": "Ends run() at the end of the frame."
+  },
+  {
+   "group": "tree",
+   "sig": "change_scene(root: Node)",
+   "es": "Cambia el árbol entero al acabar el fotograma (el viejo se libera).",
+   "en": "Swaps the whole tree at the end of the frame (the old one is freed).",
+   "example": "change_scene(scene_level2())"
+  },
+  {
+   "group": "tree",
+   "sig": "get_tree_root() -> Node",
+   "es": "La raíz del árbol.",
+   "en": "The root of the tree."
+  },
+  {
+   "group": "tree",
+   "sig": "get_nodes_in_group(g: String) -> [Node]",
+   "es": "Los nodos de un grupo.",
+   "en": "The nodes of a group.",
+   "example": "for e in get_nodes_in_group(\"enemies\")"
+  },
+  {
+   "group": "tree",
+   "sig": "node_by_id(id: Int) -> Node",
+   "es": "El nodo de ese id (el data de las señales de choque), o nil.",
+   "en": "The node of that id (the data of collision signals), or nil."
+  },
+  {
+   "group": "tree",
+   "sig": "id_in_group(id: Int, g: String) -> Bool",
+   "es": "El nodo de ese id está en el grupo.",
+   "en": "The node of that id is in the group."
+  },
+  {
+   "group": "tree",
+   "sig": "set_paused(p: Bool)",
+   "es": "Pausa: nada se mueve; se sigue dibujando.",
+   "en": "Pause: nothing moves; drawing goes on."
+  },
+  {
+   "group": "tree",
+   "sig": "set_frame_rate(rate: Int)",
+   "es": "25 fotogramas por segundo en vez de 50, con la física a 50.",
+   "en": "25 frames a second instead of 50, with the physics at 50."
+  },
+  {
+   "group": "tree",
+   "sig": "set_active_margin(margin: Int)",
+   "es": "Con cámara, los nodos más lejos que esto de la vista se quedan quietos (-1: nunca).",
+   "en": "With a camera, nodes further than this from the view stand still (-1: never)."
+  },
+  {
+   "group": "node",
+   "sig": "n.add_child(c: Node)",
+   "es": "Añade un hijo (si el padre está en el árbol, entra y recibe ready).",
+   "en": "Adds a child (if the parent is in the tree, it enters and gets ready)."
+  },
+  {
+   "group": "node",
+   "sig": "n.remove_child(c: Node)",
+   "es": "Lo saca del árbol sin liberarlo.",
+   "en": "Takes it out of the tree without freeing it."
+  },
+  {
+   "group": "node",
+   "sig": "n.queue_free()",
+   "es": "Fuera del árbol y liberado al acabar el fotograma.",
+   "en": "Out of the tree and freed at the end of the frame."
+  },
+  {
+   "group": "node",
+   "sig": "n.get_node(path: String) -> Node",
+   "es": "Un nodo por su ruta: \"Jugador/Arma\", \"..\", \"/Nivel/Jugador\".",
+   "en": "A node by its path: \"Player/Gun\", \"..\", \"/Level/Player\".",
+   "example": "arma = jugador.get_node(\"Arma\")"
+  },
+  {
+   "group": "node",
+   "sig": "n.find(name: String) -> Node",
+   "es": "El primero con ese nombre debajo, a cualquier profundidad.",
+   "en": "The first one with that name below, at any depth."
+  },
+  {
+   "group": "node",
+   "sig": "n.global_x() -> Int, n.global_y() -> Int",
+   "es": "Posición en el mundo.",
+   "en": "Position in the world."
+  },
+  {
+   "group": "node",
+   "sig": "n.set_pos(x, y), n.set_global_pos(x, y)",
+   "es": "Pone la posición (desde el padre, o en el mundo).",
+   "en": "Sets the position (from the parent, or in the world)."
+  },
+  {
+   "group": "node",
+   "sig": "n.add_to_group(g), n.remove_from_group(g), n.is_in_group(g)",
+   "es": "Grupos de nodos.",
+   "en": "Groups of nodes."
+  },
+  {
+   "group": "node",
+   "sig": "n.emit(signal: String, data: Int)",
+   "es": "Emite una señal: la reciben su script, sus comportamientos y los nodos conectados, al acabar el fotograma.",
+   "en": "Emits a signal: its script, its behaviours and the connected nodes get it at the end of the frame.",
+   "example": "n.emit(\"opened\", 0)"
+  },
+  {
+   "group": "node",
+   "sig": "n.connect(signal: String, to: Node), n.disconnect(signal, to)",
+   "es": "Conecta una señal de n con otro nodo (su on_signal).",
+   "en": "Connects a signal of n to another node (its on_signal).",
+   "example": "timer.connect(\"timeout\", jefe)"
+  },
+  {
+   "group": "node",
+   "sig": "n.add_behavior(b: Script)",
+   "es": "Pone un comportamiento listo (Platformer(), Patrol()...).",
+   "en": "Puts a ready-made behaviour (Platformer(), Patrol()...).",
+   "example": "jugador.add_behavior(Platformer())"
+  },
+  {
+   "group": "node",
+   "sig": "n.set_z_index(z: Int)",
+   "es": "Orden de dibujo.",
+   "en": "Drawing order."
+  },
+  {
+   "group": "node",
+   "sig": "n.play(anim: String), n.stop(), n.start()",
+   "es": "Animación, sonido, Timer o partículas, según el tipo.",
+   "en": "Animation, sound, Timer or particles, by kind."
+  },
+  {
+   "group": "node",
+   "sig": "n.set_text(t: String)",
+   "es": "Texto de un Label.",
+   "en": "Text of a Label."
+  },
+  {
+   "group": "node",
+   "sig": "n.move_and_slide()",
+   "es": "Body2D: se mueve por su velocidad y se para en paredes, suelo y cuerpos sólidos.",
+   "en": "Body2D: moves by its speed and stops at walls, floor and solid bodies."
+  },
+  {
+   "group": "node",
+   "sig": "n.hitbox() -> Rect, n.overlaps(o: Node) -> Bool, n.touches_tile(kind) -> Bool",
+   "es": "Choques a mano.",
+   "en": "Collisions by hand."
+  },
+  {
+   "group": "physics",
+   "sig": "accelerate_x(n, target: Fixed, rate: Fixed), accelerate_y(...)",
+   "es": "Hacia una velocidad, tanto por paso: inercia, aceleración y frenada.",
+   "en": "Towards a speed, so much a step: inertia, acceleration and braking.",
+   "example": "accelerate_x(n, Fixed(3) * dir, Fixed(0.2))"
+  },
+  {
+   "group": "physics",
+   "sig": "friction_x(n, amount: Fixed)",
+   "es": "Rozamiento: la velocidad en x hacia 0.",
+   "en": "Friction: the speed in x towards 0."
+  },
+  {
+   "group": "physics",
+   "sig": "apply_gravity(n, g: Fixed, max_fall: Fixed)",
+   "es": "Gravedad hasta una velocidad de caída.",
+   "en": "Gravity up to a falling speed."
+  },
+  {
+   "group": "physics",
+   "sig": "tile_at(wx: Int, wy: Int) -> Int",
+   "es": "La casilla de choque en un punto del mundo (TILE_SOLID...).",
+   "en": "The collision tile at a world point (TILE_SOLID...)."
+  },
+  {
+   "group": "world",
+   "sig": "new_tilemap(name, file) -> Node, new_tilemap_with(name, file, tileset)",
+   "es": "Un mapa .fmap del editor de Forja.",
+   "en": "A .fmap map of Forja's editor."
+  },
+  {
+   "group": "world",
+   "sig": "map_objects(map, kind) -> [Int], map_object_x(map, i), map_object_y(map, i), map_object_name(map, i)",
+   "es": "Los objetos del mapa (\"enemy\", \"coin\"...).",
+   "en": "The map's objects (\"enemy\", \"coin\"...)."
+  },
+  {
+   "group": "world",
+   "sig": "map_pixel_width(map), map_pixel_height(map)",
+   "es": "Tamaño del mapa en píxeles (para los límites de la cámara).",
+   "en": "Size of the map in pixels (for the camera's limits)."
+  },
+  {
+   "group": "world",
+   "sig": "set_view(x, y, w, h)",
+   "es": "Dónde se ve el mundo en la pantalla (el resto, para el marcador).",
+   "en": "Where the world shows on the screen (the rest, for the score)."
+  },
+  {
+   "group": "world",
+   "sig": "set_background_color(pen), set_hud_color(pen)",
+   "es": "Colores del fondo y de fuera de la vista.",
+   "en": "Colours of the background and out of the view."
+  },
+  {
+   "group": "world",
+   "sig": "redraw_background()",
+   "es": "Pinta otra vez el fondo (mapas, ColorRect, Labels).",
+   "en": "Paints the background again (maps, ColorRects, Labels)."
+  },
+  {
+   "group": "world",
+   "sig": "set_isometric(on: Bool), set_iso_origin(x0)",
+   "es": "Proyección isométrica: suelo en rombos, orden por profundidad.",
+   "en": "Isometric projection: diamond ground, drawn by depth."
+  },
+  {
+   "group": "world",
+   "sig": "image_cached(file) -> Image, sound_cached(file) -> Int",
+   "es": "Imágenes y sonidos cargados una vez.",
+   "en": "Pictures and sounds loaded once."
+  },
+  {
+   "group": "world",
+   "sig": "spawn(n: Node, s: Node, dx, dy) -> Node",
+   "es": "Pone un árbol nuevo (una escena) junto a n, como hermano.",
+   "en": "Puts a new tree (a scene) next to n, as a brother.",
+   "example": "spawn(n, scene_bullet(), 8, 0)"
+  },
+  {
+   "group": "input",
+   "sig": "action_pressed(name), action_just_pressed(name), action_just_released(name)",
+   "es": "Acciones: left, right, up, down, jump, fire, pause, quit (teclas y joystick).",
+   "en": "Actions: left, right, up, down, jump, fire, pause, quit (keys and joystick)."
+  },
+  {
+   "group": "input",
+   "sig": "action_axis(neg, pos) -> Int",
+   "es": "-1, 0 o 1 de dos acciones.",
+   "en": "-1, 0 or 1 from two actions.",
+   "example": "dx = action_axis(\"left\", \"right\")"
+  },
+  {
+   "group": "input",
+   "sig": "action_add(name, code)",
+   "es": "Otra tecla (o JOY_FIRE...) para una acción.",
+   "en": "Another key (or JOY_FIRE...) for an action."
+  },
+  {
+   "group": "input",
+   "sig": "action_force(name, down)",
+   "es": "El programa mantiene una acción (demo, pruebas, jugador de la máquina).",
+   "en": "The program holds an action (demo, tests, computer player)."
+  },
+  {
+   "group": "game",
+   "sig": "game_get(name), game_set(name, v), game_add(name, v)",
+   "es": "Variables del juego (puntos, vidas, tiempo).",
+   "en": "Game variables (score, lives, time)."
+  },
+  {
+   "group": "game",
+   "sig": "bind_label(n, prefix, var_name)",
+   "es": "Un Label que enseña una variable del juego.",
+   "en": "A Label that shows a game variable."
+  },
+  {
+   "group": "sound",
+   "sig": "play_sound(file), play_music(file), stop_music()",
+   "es": "Efectos 8SVX y música MOD.",
+   "en": "8SVX effects and MOD music."
+  },
+  {
+   "group": "effects",
+   "sig": "tween(n, prop, to, frames), tween_ease(n, prop, to, frames, ease)",
+   "es": "Una propiedad (x, y, z_index, frame) hacia un valor; señal tween_finished.",
+   "en": "A property (x, y, z_index, frame) towards a value; signal tween_finished."
+  },
+  {
+   "group": "behaviors",
+   "sig": "play_facing(n, anim, facing), move_node(n, dx, dy), send_signal(to, name, from, data)",
+   "es": "Ayudas que usan los comportamientos.",
+   "en": "Helpers the behaviours use."
+  }
+ ]
 }

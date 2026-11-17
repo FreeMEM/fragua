@@ -111,6 +111,6 @@ Main
         if demo
             Print "plataformas: #{t.frames} frames, lost #{t.lost}, work #{t.work / t.frames} ms a frame (at most #{t.worst}), physics #{t.ms_physics / t.frames}, process #{t.ms_process / t.frames}, draw #{t.ms_draw / t.frames}, score #{game_get("score")}, lives #{game_get("lives")}"
         end
-        fragua_close_screen(s)
+        close_screen(s)
     end
 end

@@ -183,3 +183,13 @@ func open_screen(width: Int, height: Int, depth: Int, title: String) -> Screen
     fragua_screen = Screen(width, height, depth, screen_double_buffer())
     return fragua_screen
 end
+
+# The same as s.close(), for inside an if or a function: dash --gcc reads x.close() there as a window's close
+func close_screen(s: Screen)
+    if s.has_background
+        bitmap_free(FRAGUA_BACKGROUND)
+        s.has_background = false
+    end
+    screen_close()
+    fragua_screen = nil
+end

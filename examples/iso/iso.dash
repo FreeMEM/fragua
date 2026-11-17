@@ -84,6 +84,6 @@ Main
                 Print "iso: #{t.frames} frames, lost #{t.lost}, work #{t.work / t.frames} ms a frame (at most #{t.worst}), hero at #{hero.x}, #{hero.y}"
             end
         end
-        fragua_close_screen(s)
+        close_screen(s)
     end
 end

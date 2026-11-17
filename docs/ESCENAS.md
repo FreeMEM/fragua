@@ -48,6 +48,8 @@ JSON en UTF-8. Ejemplo (`examples/plataformas/enemy.escena`):
 - `fragua`: la versión del formato (1).
 - `name`: el nombre de la escena. La función generada es `scene_` más el nombre en minúsculas, con `_` en vez de
   lo que no sea letra o cifra: `scene_enemy()`.
+- `projection` (opcional): `"flat"` (la de siempre) o `"iso"` (isométrica: la función generada llama a
+  `set_isometric(true)`). Es de la escena, no de cada nodo.
 - `root`: el nodo raíz. Cada nodo tiene:
   - `type`: uno de los tipos de la tabla de abajo, o `"Instance"` (otra escena, ver abajo).
   - `name`: su nombre (para `get_node`). Único entre sus hermanos.

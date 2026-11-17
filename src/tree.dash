@@ -657,16 +657,7 @@ func run(root: Node)
     end
     fragua_set_root(nil)
     if t.own_screen
-        fragua_close_screen(s)
+        close_screen(s)
     end
 end
 
-# What Screen.close does (dash --gcc reads x.close() as a window's close, except at the top of Main)
-func fragua_close_screen(s: Screen)
-    if s.has_background
-        bitmap_free(FRAGUA_BACKGROUND)
-        s.has_background = false
-    end
-    screen_close()
-    fragua_screen = nil
-end

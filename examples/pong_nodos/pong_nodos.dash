@@ -144,6 +144,6 @@ Main
         if demo
             Print "pong_nodos: #{t.frames} frames, #{game_get("left")} - #{game_get("right")}, lost #{t.lost}, work #{t.work / t.frames} ms a frame (at most #{t.worst}), physics #{t.ms_physics / t.frames}, process #{t.ms_process / t.frames}, draw #{t.ms_draw / t.frames}"
         end
-        fragua_close_screen(s)
+        close_screen(s)
     end
 end

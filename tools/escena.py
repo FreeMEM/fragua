@@ -105,6 +105,9 @@ class Generador:
         donde = nombre if donde is None else donde + "/" + nombre
         props = d.get("props", {})
         x, y = props.get("x", 0), props.get("y", 0)
+        for k, val in (("x", x), ("y", y)):
+            if not isinstance(val, int) or isinstance(val, bool):
+                self.error(donde, "la propiedad %s: se esperaba un número entero y hay %r" % (k, val))
         v = self.var()
         n = dash_texto(nombre)
         if tipo == "Instance":
@@ -327,6 +330,11 @@ class Generador:
 
     def generar(self):
         self.camara = None
+        proy = self.escena.get("projection", "flat")
+        if proy not in ("flat", "iso"):
+            raise ErrorEscena("%s: \"projection\" es \"flat\" o \"iso\", no %r" % (self.ruta, proy))
+        if proy == "iso":
+            self.linea("set_isometric(true)")
         raiz = self.nodo(self.escena["root"], None)
         if self.camara:
             v, props = self.camara

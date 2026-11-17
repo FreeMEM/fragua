@@ -611,3 +611,123 @@ struct Blink: Script
     func on_signal(n: Node, name: String, from: Node, data: Int)
     end
 end
+
+# --- Vehicle: a side-view car or motorbike: accelerates, brakes, keeps its speed (inertia), gears ---
+struct Vehicle: Script
+    accel: Fixed = Fixed(0.08)        # speed gained each step with "right" (or "fire")
+    brake: Fixed = Fixed(0.2)         # speed lost each step with "left"
+    drag: Fixed = Fixed(0.02)         # speed lost each step with nothing pressed
+    gears: Int = 3                    # top speed = gear_speed * gear; "up" and "down" change gear
+    gear_speed: Fixed = Fixed(1.5)
+    gravity: Fixed = Fixed(0.3)
+    jump: Fixed = Fixed(5)            # "jump" on the floor
+    crash_speed: Int = 96             # landing faster than this (1/16 pixel a step) emits "crashed"
+    player: Bool = true
+    gear: Int = 1
+
+    func ready(n: Node)
+        if n.body == nil
+            n.body = BodyData()
+        end
+    end
+
+    func process(n: Node, delta: Int)
+    end
+
+    func physics_process(n: Node)
+        b = n.body
+        if self.player
+            if action_just_pressed("up") and self.gear < self.gears
+                self.gear = self.gear + 1
+                n.emit("gear", self.gear)
+            elif action_just_pressed("down") and self.gear > 1
+                self.gear = self.gear - 1
+                n.emit("gear", self.gear)
+            end
+            top = self.gear_speed * self.gear
+            if action_pressed("right")
+                accelerate_x(n, top, self.accel)
+            elif action_pressed("left")
+                friction_x(n, self.brake)
+            else
+                friction_x(n, self.drag)
+            end
+            if b.vx > top
+                friction_x(n, self.brake)
+            end
+            if action_just_pressed("jump") and b.on_floor
+                b.vy = 0 - self.jump
+                n.emit("jumped", 0)
+            end
+        end
+        apply_gravity(n, self.gravity, Fixed(8))
+        n.move_and_slide()
+    end
+
+    func on_signal(n: Node, name: String, from: Node, data: Int)
+        if name == "landed" and data > self.crash_speed
+            n.emit("crashed", data)
+        end
+    end
+end
+
+# --- Sine: goes up and down (or to and fro) around where it started ---
+struct Sine: Script
+    amplitude: Int = 8                # pixels
+    period: Int = 100                 # video frames for a whole turn
+    horizontal: Bool = false
+    t: Int = 0
+    base: Int = -32768
+
+    func ready(n: Node)
+    end
+
+    func process(n: Node, delta: Int)
+        if self.base == -32768
+            self.base = n.y
+            if self.horizontal
+                self.base = n.x
+            end
+        end
+        self.t = self.t + delta
+        a = 360 * (self.t % self.period) / self.period
+        v = self.base + Int(fx_sin(Fixed(a)) * self.amplitude)
+        if self.horizontal
+            n.x = v
+        else
+            n.y = v
+        end
+    end
+
+    func physics_process(n: Node)
+    end
+
+    func on_signal(n: Node, name: String, from: Node, data: Int)
+    end
+end
+
+# --- Shooter: emits "shoot" every so often, or when an action is pressed (an event spawns the bullet) ---
+struct Shooter: Script
+    every: Int = 25                   # video frames between shots (the least, with an action)
+    action: String = ""               # "fire": shoots when pressed; "": shoots by itself
+    left: Int = 0
+
+    func ready(n: Node)
+    end
+
+    func process(n: Node, delta: Int)
+        if self.left > 0
+            self.left = self.left - delta
+        end
+        if self.left <= 0 and (self.action == "" or action_pressed(self.action))
+            n.emit("shoot", 0)
+            self.left = self.every
+        end
+    end
+
+    func physics_process(n: Node)
+    end
+
+    func on_signal(n: Node, name: String, from: Node, data: Int)
+    end
+end

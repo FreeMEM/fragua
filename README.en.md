@@ -1,19 +1,86 @@
 # Fragua
 
-A library for making games in [Dash](https://github.com/FreeMEM/dash) on the Amiga. It comes in two layers: loose
-pieces, as in pygame, and a tree of nodes and scenes, as in Godot. The design is in `docs/JUEGOS_DISENO.md` of
-[Forja](https://github.com/FreeMEM/forja). The API is in English, like Dash's builtins.
+A library for making games in [Dash](https://github.com/FreeMEM/dash) on the Amiga. It comes in two layers:
 
-Status: **phase 1**, the layer of loose pieces, with a Pong example. The node layer comes later.
+- **Layer 1, loose pieces, as in pygame:** a double-buffered screen, images, rectangles, a clock, input, sprites
+  and groups.
+- **Layer 2, nodes and scenes, as in Godot:** a node tree with signals and groups, fixed-step physics, bodies that
+  collide with the tile map, areas, a camera, texts, sound, particles, tweens, isometric view, **ready-made
+  behaviours** (platformer, patrol, pickup, health...) and **scenes** that Forja's editor will save and turn into
+  Dash, with **events without code**.
+
+The design is in `docs/JUEGOS_DISENO.md` of [Forja](https://github.com/FreeMEM/forja); the plan and log of layer 2,
+in `docs/FRAGUA_LOOP.md` (both in Spanish). The API is in English, like Dash's builtins.
 
 [Español](README.md)
 
 ## Requirements
 
-A Dash with `key_down`, `bob_paste` and `bob_width`, `bob_height` and `bob_frames`. The base machine is an A1200;
-on an A500 it works with fewer things on screen.
+Dash 2.17 or later (`./dash` or `./dash --gcc`). The base machine is an A1200; on an A500 it works with fewer
+things on screen.
 
-## Use
+## Layer 2 at a glance
+
+```
+import "fragua/fragua.dash"
+
+struct Coin: Script
+    value: Int = 10
+
+    func ready(n: Node)
+    end
+
+    func process(n: Node, delta: Int)
+    end
+
+    func physics_process(n: Node)
+    end
+
+    func on_signal(n: Node, name: String, from: Node, data: Int)
+        if name == "body_entered" and id_in_group(data, "player")
+            game_add("score", self.value)
+            n.queue_free()
+        end
+    end
+end
+
+Main
+    level = new_node("Level")
+    level.add_child(new_tilemap("Map", "level1.fmap"))      # from Forja's map editor
+    player = new_body2d("Player", 32, 160)
+    player.add_child(new_sprite2d("Sprite", image_cached("player.iff"), 0, 0))
+    player.add_to_group("player")
+    player.add_behavior(Platformer())                       # runs and jumps, no more code
+    level.add_child(player)
+    coin = new_area2d("Coin", 120, 160)
+    coin.add_child(new_sprite2d("Sprite", image_cached("coin.iff"), 0, 0))
+    coin.script = Coin()
+    level.add_child(coin)
+    run(level)                                              # until quit()
+end
+```
+
+- **One struct, `Node`,** for every kind: what all have (name, children, parent, position, groups, signals) and a
+  field per kind (`n.body`, `n.sprite`, `n.area`, `n.map`, `n.camera`, `n.label`, `n.timer`...). So
+  `get_node("Player/Gun")` gives a node with everything at hand.
+- **Scripts:** a struct of the game with the `Script` interface (`ready`, `process`, `physics_process`,
+  `on_signal`; all four, even if empty, and at least one field). `physics_process` runs at a fixed 50 steps a second.
+- **Signals:** `n.emit("hit", data)`; the node itself and the connected ones (`a.connect("hit", b)`) get it, once
+  a frame.
+- **Node kinds:** `Node`, `Node2D`, `Sprite2D`, `AnimatedSprite2D`, `HardwareSprite2D`, `CollisionShape2D` (box or
+  circle), `Body2D` (`move_and_slide`, one-way platforms, slopes, bounce), `StaticBody2D`, `Area2D`, `TileMap`,
+  `Camera2D` (a screen at a time), `Label`, `ColorRect`, `Timer`, `AudioPlayer`, `Particles2D`.
+- **Ready-made behaviours:** `Platformer`, `EightWay`, `Bullet`, `Follow`, `Patrol`, `BounceEdges`, `Wrap`,
+  `DestroyOffscreen`, `Health`, `Damage`, `Pickup`, `Draggable`, `Blink`.
+- **Scenes:** an `.escena` file (JSON) with nodes, properties, scripts, behaviours, scenes within scenes and events
+  with actions; `tools/escena.py` turns it into a readable `.dash` (`scene_enemy()` gives a new tree each call).
+  Format: `docs/ESCENAS.md`.
+- **Isometric:** `set_isometric(true)`: diamond ground, drawn by depth, collisions on the plane.
+- **Full reference** (functions, nodes, properties with type, default and range, signals, behaviours and actions):
+  `docs/REFERENCE.en.md`, made from `api/fragua.json`, which Forja's scene editor will also use for its inspector,
+  help and autocompletion.
+
+## Layer 1
 
 ```
 import "fragua/fragua.dash"
@@ -35,50 +102,52 @@ Main
 end
 ```
 
-- **Screen** (`screen_open`): a screen of its own, double buffered. `color`, `palette` (an IFF's colours), `rect`,
-  `text`, `present` (shows what was drawn at the next vertical blank).
-- **Background:** clearing the whole screen costs more than a frame, so the screen keeps a background
-  (`background`, or `background_start` ... `background_end` to draw on it). Each frame starts with `s.begin()` and
-  the sprites' `erase()`, which put the background back only where they were.
-- **Image** (`image_load`, `image_new`): an IFF from Forja's sprite editor, with its frames, drawn with its mask
-  (colour 0 transparent).
-- **Rect:** collisions, intersection, union, `clamp`.
-- **Clock** (`new_clock(50)`): `tick()` says how many frames went by (more than 1 if the game was late).
-- **Input:** `key(KEY_ESC)` (a key held down now), `axis_x(1)`, `axis_y(1)` and `fire(1)` (joystick, or arrows and
-  space).
-- **Sprite and Group:** image, rectangle, frame and speed; the group moves, draws, erases and finds collisions.
+- **Screen** (`open_screen`): own screen with double buffering, a background and dirty rectangles (`s.mark`,
+  `s.begin`): the background is put back only where something was drawn.
+- **Image** (`load_image`, `new_image`): an IFF of Forja's sprite editor, with its frames.
+- **Rect, clock** (`new_clock`), **input** (`key`, `axis_x`, `fire`), **Sprite and Group** (`new_sprite`,
+  `new_group`).
+
+Since the version with nodes, `screen_open`, `image_load`, `image_new`, `sprite_new`, `group_new` and `clock_new`
+are `open_screen`, `load_image`, `new_image`, `new_sprite`, `new_group` and `new_clock`: Dash now has builtins
+`screen_open` and `image_load`.
 
 ## What it costs
 
-Measured in FS-UAE at real speed (`bench/costes.sh`), 320x256 screen with 5 planes:
+Measured in FS-UAE at real speed, an A1200 without Fast memory (68020 at 14 MHz), with `./dash --gcc`:
 
-| | A1200 | A500 |
-|---|---|---|
-| Clear the whole screen | 36.7 ms | 37.4 ms |
-| 16x16 image with mask | 1.6 ms | 3.3 ms |
-| 32x32 image with mask | 3.5 ms | 5.4 ms |
-| 32x32 rectangle | 0.9 ms | 1.2 ms |
-| 13-letter text | 2 ms | 4.6 ms |
-| `key_down` | 0.08 ms | 0.28 ms |
-| `Rect.collides` | 0.02 ms | 0.13 ms |
+| | A1200 |
+|---|---|
+| A 16x16 image with mask (`bob_paste`) | 1.6 ms |
+| A physics step with the player, 2 or 3 enemies and coins nearby | 7-8 ms |
+| Pong with nodes (3 sprites) | 13 ms a frame |
+| Platformer (about 10 sprites on screen, at 25 a second) | 39-46 ms a frame |
 
-A frame is 20 ms. The Pong example spends 5 ms a frame on an A1200 (it loses 2 of 500, drawing the background at
-the start) and 15 ms on an A500 (it loses 90 of 500).
+A frame is 20 ms. **An A1200 fits about 10 sprites (BOBs) a frame at 50 Hz**: what costs is drawing with a mask,
+which the system does with several blitter passes per plane. For more, `set_frame_rate(25)` (the physics stays at
+50), hardware sprites (`new_hw_sprite2d`, they cost nothing) and levels with fewer things per screen. Nodes far from
+the camera do no work. With `./dash` (the direct compiler) the logic runs 2 to 20 times slower than with
+`./dash --gcc`: games, better with `--gcc` for now. Details and what Dash lacks: `docs/FRAGUA_LOOP.md`.
 
 ## Examples and tests
 
-- `examples/pong/pong.dash`: W and S, or the joystick; the right paddle plays by itself. Esc quits.
+- `examples/plataformas/`: a platformer made of scenes (`*.escena` and the `.dash` they generate): player, enemies
+  you can stomp, coins with events without code, camera and score.
 
-  ![The Pong example](examples/pong/pong.png)
+  ![Platformer](examples/plataformas/plataformas.png)
 
-- `tests/todas.sh DASH_DIR`: the `Rect` test and Pong in demo mode (`ENV:FRAGUA_DEMO`: it plays by itself for 500
-  frames), in FS-UAE with `DASH_KICKSTART` (3.1). `REAL=1 tests/pong.sh ...` at the speed of an A1200; `A500=1`,
-  of an A500.
+- `examples/pong_nodos/`: Pong with nodes; `examples/pong/`: the same with layer 1.
+- `examples/iso/`: an isometric room with blocks that hide and get hidden.
+
+  ![Isometric](examples/iso/iso.png)
+
+- `tools/recursos.py` makes the examples' images, maps and sounds.
+- `tests/todas.sh DASH_DIR`: in FS-UAE, through both ways of Dash, `Rect`, the node tree, the scenes and the
+  examples in demo mode (they play by themselves). `A500=1` also on an A500. `tests/juego.sh` runs one example
+  (`REAL=1`: real speed; `GCC=1`; `PERFIL=1`: Dash's profile; screenshots).
 
 ## To do
 
-- Faster masked drawing: the system's masked blit (`BltMaskBitMapRastPort`) makes several blitter passes a plane.
-  Driving the blitter directly (with `OwnBlitter`) would do it in one.
-- `key_down` has not been tried with a real key: the test emulator only simulates keys through `input.device`,
-  which does not reach the keyboard's matrix.
-- Phase 2: tile maps (from Forja's map editor) and a camera with hardware scrolling.
+See `docs/FRAGUA_LOOP.md`: smooth scrolling (Dash lacks hardware scrolling), drawing with a mask by programming the
+blitter, animations with tracks (AnimationPlayer), lights, saving the game, a game template and Forja's scene
+editor.
