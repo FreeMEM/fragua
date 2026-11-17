@@ -448,3 +448,27 @@ func fragua_draw()
         i = i + 1
     end
 end
+
+# The first tile map at or below a node (for a camera's limits)
+func fragua_first_map(n: Node) -> Node
+    if n.map != nil
+        return n
+    end
+    for c in n.children
+        f = fragua_first_map(c)
+        if f != nil
+            return f
+        end
+    end
+    return nil
+end
+
+# A new node (a scene's tree) next to n: a brother of it, at n's place plus dx, dy. It gives the new node back.
+func spawn(n: Node, s: Node, dx: Int, dy: Int) -> Node
+    s.set_pos(n.global_x() + dx, n.global_y() + dy)
+    if n.parent != nil
+        n.parent.add_child(s)
+        s.set_global_pos(n.global_x() + dx, n.global_y() + dy)
+    end
+    return s
+end

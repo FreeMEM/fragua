@@ -1,0 +1,14 @@
+{
+  "fragua": 1,
+  "name": "Level1",
+  "root": {
+    "type": "Node", "name": "Level",
+    "children": [
+      {"type": "TileMap", "name": "Map",
+       "props": {"file": "level1.fmap", "spawn": {"coin": "coin.escena", "enemy": "enemy.escena", "player": "player.escena"}}},
+      {"type": "Camera2D", "name": "Camera", "props": {"target": "Player", "limits": "map"}},
+      {"type": "Label", "name": "Score", "props": {"x": 8, "y": 3, "pen": 13, "bg": 0, "bind": "score", "prefix": "SCORE "}},
+      {"type": "Label", "name": "Lives", "props": {"x": 240, "y": 3, "pen": 15, "bg": 0, "bind": "lives", "prefix": "LIVES "}}
+    ]
+  }
+}

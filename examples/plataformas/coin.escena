@@ -1,0 +1,16 @@
+{
+  "fragua": 1,
+  "name": "Coin",
+  "root": {
+    "type": "Area2D", "name": "Coin",
+    "events": [
+      {"signal": "body_entered", "if_group": "player",
+       "actions": [{"do": "add", "var": "score", "value": 10}, {"do": "sound", "file": "coin.8svx"}, {"do": "destroy"}]}
+    ],
+    "children": [
+      {"type": "AnimatedSprite2D", "name": "Sprite",
+       "props": {"image": "coin.iff", "autoplay": "spin", "animations": {"spin": {"frames": [0, 1, 2, 3], "speed": 6}}}},
+      {"type": "CollisionShape2D", "name": "Shape", "props": {"rect": [3, 2, 10, 12]}}
+    ]
+  }
+}

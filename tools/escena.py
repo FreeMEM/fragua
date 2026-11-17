@@ -204,7 +204,7 @@ class Generador:
                 L("%s = new_tilemap(%s, %s)" % (v, n, dash_texto(props["file"])))
             L("if %s == nil" % v)
             L("    Print %s" % dash_texto("Fragua: the map %s (or its tileset) does not load" % props["file"]))
-            L("    return new_node(%s)" % n)
+            L("    return n1")
             L("end")
             if x or y:
                 L("%s.set_pos(%d, %d)" % (v, x, y))
@@ -225,7 +225,7 @@ class Generador:
         info = API["behaviors"].get(tipo)
         if info is None:
             self.error(donde, "el comportamiento %r no existe; los que hay: %s" % (tipo, ", ".join(API["behaviors"])))
-        bv = "b%d" % self.var()[1:]
+        bv = "b" + self.var()[1:]
         self.linea("%s = %s()" % (bv, tipo))
         for k, val in b.get("props", {}).items():
             p = info["props"].get(k)
@@ -249,7 +249,7 @@ class Generador:
 
     def eventos(self, v, eventos, donde):
         nodo = donde.rsplit("/", 1)[-1]
-        nombre = nombre_struct(self.nombre, nodo, "Events")
+        nombre = nombre_struct(self.nombre, "Events") if nodo == self.nombre else nombre_struct(self.nombre, nodo, "Events")
         if any(s.startswith("struct %s:" % nombre) for s in self.structs):
             nombre += str(self.cuenta)
         cuerpo = []
