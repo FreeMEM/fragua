@@ -175,6 +175,8 @@ Por orden de lo que pesa para Fragua:
 - Rendimiento: nodos quietos lejos de la cámara (`set_active_margin`), áreas una vez por fotograma con cajas en
   caché, el mapa de choques en números del árbol, animaciones y entrada a petición, `set_frame_rate(25)` con la
   física a 50.
+- Pruebas: `tests/todas.sh` pasa entero en A1200 por los dos caminos (rect, nodos, escenas, Pong, Pong con
+  nodos, plataformas, isométrico) y en A500 por los dos (el Pong de la capa 1 con `--gcc`, tras quitar `const W`).
 - H2 empezado: `plantilla/plataformas/` (escenas, recursos y un `main.dash` con los scripts). Faltan plantillas
   de otros géneros (cenital, matamarcianos, puzle, isométrico).
 - Sin hacer: scroll suave (Dash), AnimationPlayer, luces, guardar partida, los
