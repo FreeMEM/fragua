@@ -40,7 +40,7 @@ struct Tree
     frames: Int = 0               # frames drawn
     steps: Int = 0                # physics steps done
     lost: Int = 0                 # frames lost (the game was late)
-    max_steps: Int = 3            # physics steps at most before drawing
+    max_steps: Int = 2            # physics steps at most before drawing (one more at 25 frames a second)
     cam_x: Int = 0                # the camera's world point at the corner of its view (as the background is drawn)
     cam_y: Int = 0
     view_x: Int = 0
@@ -49,8 +49,26 @@ struct Tree
     view_h: Int = 256
     bg_dirty: Bool = true         # the background has to be drawn again (maps, labels)
     bg_pen: Int = 0
+    hud_pen: Int = -1
+    solids: Int = 0               # solid bodies in the tree
+    slopes: Int = 0               # maps with slopes, and with ladders or damage
+    specials: Int = 0
+    area_layers: Int = 0          # the layers of all the areas (bits)
+    cm_id: Int = -1               # the map that stops bodies: Dash's map, its collision layer, tile, size, place
+    cm_layer: Int = 0
+    cm_tile: Int = 16
+    cm_w: Int = 0
+    cm_h: Int = 0
+    cm_x: Int = 0
+    cm_y: Int = 0
+    cm_slopes: Bool = false
+    rate: Int = 50                # frames a second: 50 (60 in NTSC), or 25 (30) for heavier games
+    active_margin: Int = 64       # with a camera, nodes further than this out of the view stand still (-1: never)             # out of the view (-1: as the background)
     work: Int = 0                 # ms of work, all frames (time_ms before present)
     worst: Int = 0                # the worst frame
+    ms_physics: Int = 0           # ms in the physics steps, the process (and signals) and the drawing, all frames
+    ms_process: Int = 0
+    ms_draw: Int = 0
     stop_after: Int = 0           # quit after so many frames (0: never), for tests and measures
     own_screen: Bool = false      # run() opened the screen (it closes it)
 end
@@ -86,6 +104,72 @@ end
 func id_in_group(id: Int, g: String) -> Bool
     n = node_by_id(id)
     return n != nil and n.is_in_group(g)
+end
+
+# 25 frames a second (30 in NTSC) instead of 50: twice the time to draw. The physics still goes at 50 steps a
+# second (two each frame), so the game plays the same. Call it before run().
+func set_frame_rate(rate: Int)
+    fragua_tree.rate = rate
+end
+
+# Nodes further than margin pixels out of the camera's view stand still: no scripts, behaviours, areas or
+# animations (an Amiga cannot move a whole level each frame). -1: all of them always. Node.always_active for one.
+func set_active_margin(margin: Int)
+    fragua_tree.active_margin = margin
+end
+
+# Near the camera (or no camera, or always_active, or a plain Node or a ui one: they have no place in the world)
+func is_active(n: Node) -> Bool
+    t = fragua_tree
+    if t.camera == nil or t.active_margin < 0 or n.always_active or n.kind == NODE or n.ui
+        return true
+    end
+    m = t.active_margin
+    x = n.global_x()
+    if x < t.cam_x - m or x > t.cam_x + t.view_w + m
+        return false
+    end
+    y = n.global_y()
+    return y >= t.cam_y - m and y <= t.cam_y + t.view_h + m
+end
+
+func fragua_collision_map(n: Node)
+    t = fragua_tree
+    t.cm_id = n.map.id
+    t.cm_layer = n.map.collision
+    t.cm_tile = n.map.tile
+    t.cm_w = n.map.width
+    t.cm_h = n.map.height
+    t.cm_x = n.global_x()
+    t.cm_y = n.global_y()
+    t.cm_slopes = n.map.slopes
+end
+
+# Once a frame, before the physics: which nodes are near the camera (Node.active), and where the maps are
+func fragua_mark_active()
+    fragua_tree.cm_id = -1
+    i = fragua_tree.maps.length - 1
+    while i >= 0
+        if fragua_tree.maps[i].map.collision >= 0
+            fragua_collision_map(fragua_tree.maps[i])
+        end
+        i = i - 1
+    end
+    i = 0
+    while i < fragua_tree.scripted.length
+        fragua_tree.scripted[i].active = is_active(fragua_tree.scripted[i])
+        i = i + 1
+    end
+    i = 0
+    while i < fragua_tree.animated.length
+        fragua_tree.animated[i].active = is_active(fragua_tree.animated[i])
+        i = i + 1
+    end
+    i = 0
+    while i < fragua_tree.areas.length
+        fragua_tree.areas[i].active = is_active(fragua_tree.areas[i])
+        i = i + 1
+    end
 end
 
 # Paused: the tree stops calling process, physics_process and the behaviours of every node (drawing goes on)
@@ -166,6 +250,9 @@ func fragua_enter(n: Node)
     end
     if n.body != nil
         t.bodies.push(n)
+        if n.body.solid
+            t.solids = t.solids + 1
+        end
     end
     if n.area != nil
         t.areas.push(n)
@@ -179,6 +266,12 @@ func fragua_enter(n: Node)
     if n.map != nil
         t.maps.push(n)
         t.bg_dirty = true
+        if n.map.slopes
+            t.slopes = t.slopes + 1
+        end
+        if n.map.specials
+            t.specials = t.specials + 1
+        end
     end
     if n.label != nil and n.label.bg >= 0
         t.labels.push(n)
@@ -235,6 +328,9 @@ func fragua_exit(n: Node)
     end
     if n.body != nil
         fragua_list_remove(t.bodies, n)
+        if n.body.solid
+            t.solids = t.solids - 1
+        end
     end
     if n.area != nil
         fragua_list_remove(t.areas, n)
@@ -246,6 +342,12 @@ func fragua_exit(n: Node)
     if n.map != nil
         fragua_list_remove(t.maps, n)
         t.bg_dirty = true
+        if n.map.slopes
+            t.slopes = t.slopes - 1
+        end
+        if n.map.specials
+            t.specials = t.specials - 1
+        end
     end
     if n.label != nil and n.label.bg >= 0
         fragua_list_remove(t.labels, n)
@@ -339,7 +441,7 @@ func fragua_physics_step()
         i = 0
         while i < t.scripted.length
             n = t.scripted[i]
-            if not n.dead and not n.paused
+            if n.active and not n.dead and not n.paused
                 if n.script != nil
                     n.script.physics_process(n)
                 end
@@ -352,7 +454,6 @@ func fragua_physics_step()
             i = i + 1
         end
     end
-    fragua_areas_update()
     t.steps = t.steps + 1
 end
 
@@ -364,7 +465,7 @@ func fragua_process(delta: Int)
     i = 0
     while i < t.scripted.length
         n = t.scripted[i]
-        if not n.dead and not n.paused
+        if n.active and not n.dead and not n.paused
             if n.script != nil
                 n.script.process(n, delta)
             end
@@ -397,34 +498,36 @@ func fragua_process(delta: Int)
     # animations
     i = 0
     while i < t.animated.length
-        fragua_animate(t.animated[i], delta)
+        if t.animated[i].sprite.playing and t.animated[i].active
+            fragua_animate(t.animated[i], delta)
+        end
         i = i + 1
     end
     fragua_tweens_update(delta)
 end
 
 func fragua_animate(n: Node, delta: Int)
-    s = n.sprite
-    if not s.playing
+    if not n.sprite.playing
         return
     end
-    frames = s.anims[s.anim]
-    speed = s.speeds[s.anim]
-    s.tick = s.tick + delta
-    while s.tick >= speed
-        s.tick = s.tick - speed
-        s.pos = s.pos + 1
-        if s.pos >= frames.length
-            if s.loops[s.anim]
-                s.pos = 0
+    n.sprite.tick = n.sprite.tick + delta
+    if n.sprite.tick < n.sprite.cur_speed
+        return
+    end
+    while n.sprite.tick >= n.sprite.cur_speed
+        n.sprite.tick = n.sprite.tick - n.sprite.cur_speed
+        n.sprite.pos = n.sprite.pos + 1
+        if n.sprite.pos >= n.sprite.cur.length
+            if n.sprite.cur_loop
+                n.sprite.pos = 0
             else
-                s.pos = frames.length - 1
-                s.playing = false
+                n.sprite.pos = n.sprite.cur.length - 1
+                n.sprite.playing = false
                 n.emit("animation_finished", 0)
             end
         end
     end
-    s.frame = frames[s.pos]
+    n.sprite.frame = n.sprite.cur[n.sprite.pos]
 end
 
 func fragua_free_queued()
@@ -453,6 +556,7 @@ func fragua_set_root(root: Node)
         fragua_enter(root)
         fragua_ready(root)
     end
+    fragua_mark_active()
 end
 
 # The main loop, until quit(). If no screen is open, a 320 x 256 one of 5 planes
@@ -472,10 +576,15 @@ func run(root: Node)
     if not s.has_background
         s.background(t.bg_pen)
     end
-    t.clock = new_clock(50)
+    hz = 50
     if not video_pal()
-        t.clock = new_clock(60)
+        hz = 60
     end
+    vb = 1                        # vertical blanks a frame
+    if t.rate < 50
+        vb = 2
+    end
+    t.clock = new_clock(hz)
     fragua_set_root(root)
     while not t.quitting
         n = t.clock.tick()
@@ -483,13 +592,17 @@ func run(root: Node)
         s.begin()
         fragua_input_update()
         steps = n
-        if steps > t.max_steps
-            steps = t.max_steps
+        if steps > t.max_steps + vb - 1
+            steps = t.max_steps + vb - 1
         end
+        fragua_mark_active()
+        t1 = time_ms()
         while steps > 0
             fragua_physics_step()
             steps = steps - 1
         end
+        fragua_areas_update()         # once a frame, after the physics steps
+        t2 = time_ms()
         fragua_process(n)
         fragua_signals()
         fragua_free_queued()
@@ -498,10 +611,14 @@ func run(root: Node)
             t.next_scene = nil
             fragua_set_root(nr)
         end
+        t3 = time_ms()
         fragua_draw()
+        t.ms_physics = t.ms_physics + t2 - t1
+        t.ms_process = t.ms_process + t3 - t2
+        t.ms_draw = t.ms_draw + time_ms() - t3
         t.frames = t.frames + 1
-        if t.frames > 1
-            t.lost = t.lost + n - 1
+        if t.frames > 1 and n > vb
+            t.lost = t.lost + n - vb
         end
         w = time_ms() - t0
         t.work = t.work + w
@@ -510,6 +627,9 @@ func run(root: Node)
         end
         if t.stop_after > 0 and t.frames >= t.stop_after
             t.quitting = true
+        end
+        if vb > 1 and time_ms() - t.clock.last < 2000 / hz - 12
+            wait_vblank()             # 25 a second: one more vertical blank
         end
         s.present()
     end

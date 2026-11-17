@@ -1,0 +1,195 @@
+# A small platform game with Fragua's nodes: a level of Forja's map editor (level1.fmap), a player that runs and
+# jumps (the Platformer behaviour), enemies that patrol and that the player can stomp, coins that add to the score
+# (the Pickup behaviour), a camera that goes a screen at a time and the score on top.
+# Arrows or joystick, space or fire to jump, Esc quits. With ENV:FRAGUA_DEMO the player plays by itself for 600
+# frames and it prints what it measured (for the tests).
+
+import "../../fragua.dash"
+
+# The enemy: walks (Patrol); if the player falls on it, it dies; if not, it hurts the player
+struct Enemy: Script
+    points: Int = 50
+
+    func ready(n: Node)
+    end
+
+    func process(n: Node, delta: Int)
+    end
+
+    func physics_process(n: Node)
+        for p in get_nodes_in_group("player")
+            if n.overlaps(p)
+                fragua_box(n)
+                top = fragua_by
+                fragua_box(p)
+                if p.body.vy > 0 and fragua_by + fragua_bh <= top + 6
+                    p.body.vy = Fixed(-4)
+                    game_add("score", self.points)
+                    play_sound("hit.8svx")
+                    n.queue_free()
+                else
+                    send_signal(p, "damage", n, 1)
+                end
+            end
+        end
+    end
+
+    func on_signal(n: Node, name: String, from: Node, data: Int)
+    end
+end
+
+# The player: Platformer does the moving; this one hears its own signals
+struct Player: Script
+    falls: Int = 0
+
+    func ready(n: Node)
+    end
+
+    func process(n: Node, delta: Int)
+        # out of the bottom of the world, or on spikes: a hit and back to the start
+        if n.y > 260 or n.touches_tile(TILE_DAMAGE)
+            send_signal(n, "damage", n, 1)
+            n.set_pos(32, 160)
+            n.body.vy = 0
+        end
+    end
+
+    func physics_process(n: Node)
+    end
+
+    func on_signal(n: Node, name: String, from: Node, data: Int)
+        if name == "jumped"
+            play_sound("jump.8svx")
+        elif name == "died"
+            game_set("over", 1)
+        end
+    end
+end
+
+func new_player(x: Int, y: Int) -> Node
+    p = new_body2d("Player", x, y)
+    spr = new_animated_sprite2d("Sprite", image_cached("player.iff"), 0, 0)
+    add_animation(spr, "idle", [0], 1, true)
+    add_animation(spr, "walk", [1, 2], 6, true)
+    add_animation(spr, "jump", [3], 1, true)
+    add_animation(spr, "idle_left", [4], 1, true)
+    add_animation(spr, "walk_left", [5, 6], 6, true)
+    add_animation(spr, "jump_left", [7], 1, true)
+    p.add_child(spr)
+    p.add_child(new_shape_rect("Shape", 3, 1, 10, 15))
+    p.add_to_group("player")
+    p.script = Player()
+    p.add_behavior(Platformer())
+    h = Health(3)
+    h.var_name = "lives"
+    h.destroy = false
+    p.add_behavior(h)
+    return p
+end
+
+func new_enemy(x: Int, y: Int) -> Node
+    e = new_body2d("Enemy", x, y)
+    e.body.layer = 2
+    spr = new_animated_sprite2d("Sprite", image_cached("enemy.iff"), 0, 0)
+    add_animation(spr, "walk", [0, 1], 8, true)
+    add_animation(spr, "walk_left", [2, 3], 8, true)
+    e.add_child(spr)
+    e.add_child(new_shape_rect("Shape", 1, 4, 14, 12))
+    e.add_to_group("enemies")
+    e.script = Enemy()
+    e.add_behavior(Patrol())
+    return e
+end
+
+func new_coin(x: Int, y: Int) -> Node
+    c = new_area2d("Coin", x, y)
+    spr = new_animated_sprite2d("Sprite", image_cached("coin.iff"), 0, 0)
+    add_animation(spr, "spin", [0, 1, 2, 3], 6, true)
+    spr.play("spin")
+    c.add_child(spr)
+    c.add_child(new_shape_rect("Shape", 3, 2, 10, 12))
+    c.add_behavior(Pickup("player", "score", 10, "coin.8svx"))
+    return c
+end
+
+# The demo: runs right and jumps every so often
+struct Bot: Script
+    t: Int = 0
+
+    func ready(n: Node)
+        action_force("right", true)
+    end
+
+    func process(n: Node, delta: Int)
+        self.t = self.t + delta
+        action_force("jump", (self.t % 40) < 2)
+        if fragua_tree.frames % 50 == 0 and fragua_tree.frames > 0
+            t = fragua_tree
+            file_write_text("progreso", "#{t.frames} frames, #{t.steps} steps, lost #{t.lost}, work #{t.work / t.frames} ms, worst #{t.worst}, physics #{t.ms_physics / t.frames}, process #{t.ms_process / t.frames}, draw #{t.ms_draw / t.frames}, visuals #{t.visuals.length}")
+        end
+        if fragua_tree.frames >= 600
+            quit()
+        end
+    end
+
+    func physics_process(n: Node)
+    end
+
+    func on_signal(n: Node, name: String, from: Node, data: Int)
+    end
+end
+
+Main
+    demo = env_get("FRAGUA_DEMO") != ""
+    s = open_screen(320, 256, 5, "Plataformas")
+    if s == nil
+        Print "plataformas: the screen does not open"
+    else
+        s.palette("tiles.iff", 0)
+        set_view(0, 16, 320, 240)
+        if env_get("FRAGUA_50") == ""
+            set_frame_rate(25)            # an A1200 draws about ten BOBs in a frame of 50: this level has more
+        end
+        set_background_color(3)
+        set_hud_color(0)
+        root = new_node("Level")
+        map = new_tilemap("Map", "level1.fmap")
+        if map == nil
+            Print "plataformas: level1.fmap or its tileset do not load"
+        else
+            map.set_pos(0, 0)
+            root.add_child(map)
+            for o in map_objects(map, "coin")
+                root.add_child(new_coin(map_object_x(map, o), map_object_y(map, o)))
+            end
+            for o in map_objects(map, "enemy")
+                root.add_child(new_enemy(map_object_x(map, o), map_object_y(map, o)))
+            end
+            pl = map_objects(map, "player")
+            player = new_player(map_object_x(map, pl[0]), map_object_y(map, pl[0]))
+            root.add_child(player)
+            cam = new_camera2d("Camera")
+            cam.camera.target = player
+            cam.camera.limit_w = map_pixel_width(map)
+            cam.camera.limit_h = map_pixel_height(map)
+            root.add_child(cam)
+            score = new_label("Score", 8, 3, "", 13, 0)
+            bind_label(score, "SCORE ", "score")
+            root.add_child(score)
+            lives = new_label("Lives", 240, 3, "", 15, 0)
+            bind_label(lives, "LIVES ", "lives")
+            root.add_child(lives)
+            if demo
+                b = new_node("Bot")
+                b.script = Bot()
+                root.add_child(b)
+            end
+            run(root)
+            t = fragua_tree
+            if demo
+                Print "plataformas: #{t.frames} frames, lost #{t.lost}, work #{t.work / t.frames} ms a frame (at most #{t.worst}), score #{game_get("score")}, lives #{game_get("lives")}"
+            end
+        end
+        fragua_close_screen(s)
+    end
+end

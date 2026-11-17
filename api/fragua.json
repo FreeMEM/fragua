@@ -1,0 +1,1186 @@
+{
+ "fragua": "0.2",
+ "es": "API de Fragua: nodos, comportamientos, acciones y funciones. Fuente de la referencia, del inspector y del autocompletado de Forja.",
+ "en": "Fragua's API: nodes, behaviours, actions and functions. Source of the reference and of Forja's inspector and autocompletion.",
+ "common_props": {
+  "x": {
+   "type": "Int",
+   "default": 0,
+   "es": "Posición x, desde el padre (píxeles)",
+   "en": "x position, from the parent (pixels)",
+   "min": -32768,
+   "max": 32767,
+   "set": "n.x"
+  },
+  "y": {
+   "type": "Int",
+   "default": 0,
+   "es": "Posición y, desde el padre",
+   "en": "y position, from the parent",
+   "min": -32768,
+   "max": 32767,
+   "set": "n.y"
+  },
+  "z_index": {
+   "type": "Int",
+   "default": 0,
+   "es": "Orden de dibujo: más alto, delante",
+   "en": "Drawing order: higher, in front",
+   "min": -100,
+   "max": 100,
+   "set": "n.set_z_index(V)"
+  },
+  "visible": {
+   "type": "Bool",
+   "default": true,
+   "es": "Se ve (con sus hijos)",
+   "en": "Shown (with its children)",
+   "set": "n.visible"
+  },
+  "ui": {
+   "type": "Bool",
+   "default": false,
+   "es": "En coordenadas de pantalla: la cámara no lo mueve (marcador, menús)",
+   "en": "In screen coordinates: the camera does not move it (score, menus)",
+   "set": "n.ui"
+  },
+  "paused": {
+   "type": "Bool",
+   "default": false,
+   "es": "Sin process, physics_process ni comportamientos",
+   "en": "No process, physics_process or behaviours",
+   "set": "n.paused"
+  }
+ },
+ "nodes": {
+  "Node": {
+   "new": "new_node(name)",
+   "es": "Un nodo sin más: agrupa a otros (la raíz de un nivel).",
+   "en": "A plain node: groups others (the root of a level).",
+   "props": {},
+   "signals": []
+  },
+  "Node2D": {
+   "new": "new_node2d(name, x, y)",
+   "es": "Un nodo con posición: sus hijos se mueven con él.",
+   "en": "A node with a position: its children move with it.",
+   "props": {},
+   "signals": []
+  },
+  "Sprite2D": {
+   "new": "new_sprite2d(name, image, x, y)",
+   "es": "Una imagen (un BOB) con el color 0 transparente; su esquina de arriba a la izquierda en el nodo.",
+   "en": "A picture (a BOB) with colour 0 transparent; its top left corner at the node.",
+   "props": {
+    "image": {
+     "type": "Image",
+     "default": "",
+     "es": "Fichero IFF del editor de sprites de Forja",
+     "en": "IFF file of Forja's sprite editor"
+    },
+    "frame": {
+     "type": "Int",
+     "default": 0,
+     "es": "Fotograma que enseña",
+     "en": "Frame shown",
+     "min": 0,
+     "max": 255,
+     "set": "n.sprite.frame"
+    },
+    "offset": {
+     "type": "Point",
+     "default": [
+      0,
+      0
+     ],
+     "es": "Desplazamiento de la imagen desde el nodo",
+     "en": "Offset of the picture from the node"
+    }
+   },
+   "signals": []
+  },
+  "AnimatedSprite2D": {
+   "new": "new_animated_sprite2d(name, image, x, y)",
+   "es": "Una imagen con animaciones con nombre (fotogramas y velocidad). play(\"walk\").",
+   "en": "A picture with named animations (frames and speed). play(\"walk\").",
+   "props": {
+    "image": {
+     "type": "Image",
+     "default": "",
+     "es": "Fichero IFF con los fotogramas",
+     "en": "IFF file with the frames"
+    },
+    "animations": {
+     "type": "Animations",
+     "default": {},
+     "es": "Animaciones: nombre -> fotogramas, velocidad (fotogramas de vídeo por fotograma) y si se repite",
+     "en": "Animations: name -> frames, speed (video frames a frame) and looping"
+    },
+    "autoplay": {
+     "type": "String",
+     "default": "",
+     "es": "Animación que suena al empezar",
+     "en": "Animation playing at the start"
+    },
+    "offset": {
+     "type": "Point",
+     "default": [
+      0,
+      0
+     ],
+     "es": "Desplazamiento de la imagen",
+     "en": "Offset of the picture"
+    }
+   },
+   "signals": [
+    {
+     "name": "animation_finished",
+     "es": "Acabó una animación que no se repite",
+     "en": "An animation that does not loop finished"
+    }
+   ]
+  },
+  "HardwareSprite2D": {
+   "new": "new_hw_sprite2d(name, file, x, y)",
+   "es": "Un sprite de hardware: no cuesta CPU; 16 píxeles de ancho, 3 colores, como mucho 7.",
+   "en": "A hardware sprite: costs no CPU; 16 pixels wide, 3 colours, at most 7.",
+   "props": {
+    "image": {
+     "type": "Image",
+     "default": "",
+     "es": "IFF con fotogramas de 16 de ancho",
+     "en": "IFF with frames 16 wide"
+    },
+    "frame": {
+     "type": "Int",
+     "default": 0,
+     "es": "Fotograma",
+     "en": "Frame",
+     "min": 0,
+     "max": 255,
+     "set": "n.sprite.frame"
+    }
+   },
+   "signals": []
+  },
+  "CollisionShape2D": {
+   "new": "new_shape_rect(name, x, y, w, h) / new_shape_circle(name, x, y, r)",
+   "es": "La forma de choque de su padre (Body2D o Area2D): una caja o un círculo.",
+   "en": "The collision shape of its parent (Body2D or Area2D): a box or a circle.",
+   "props": {
+    "rect": {
+     "type": "Rect",
+     "default": [
+      0,
+      0,
+      16,
+      16
+     ],
+     "es": "Caja: x, y, ancho, alto",
+     "en": "Box: x, y, width, height"
+    },
+    "circle": {
+     "type": "Circle",
+     "default": null,
+     "es": "Círculo: x, y del centro y radio",
+     "en": "Circle: centre x, y and radius"
+    }
+   },
+   "signals": []
+  },
+  "Body2D": {
+   "new": "new_body2d(name, x, y)",
+   "es": "Un cuerpo que se mueve con move_and_slide() y se para en las paredes del mapa y en los cuerpos sólidos.",
+   "en": "A body that moves with move_and_slide() and stops at the map's walls and at solid bodies.",
+   "props": {
+    "layer": {
+     "type": "Int",
+     "default": 1,
+     "es": "Capas en las que está (bits)",
+     "en": "Layers it is in (bits)",
+     "min": 0,
+     "max": 65535,
+     "set": "n.body.layer"
+    },
+    "mask": {
+     "type": "Int",
+     "default": 1,
+     "es": "Capas de los cuerpos sólidos con los que choca",
+     "en": "Layers of the solid bodies it stops at",
+     "min": 0,
+     "max": 65535,
+     "set": "n.body.mask"
+    },
+    "collide_map": {
+     "type": "Bool",
+     "default": true,
+     "es": "Choca con el mapa de tiles",
+     "en": "Collides with the tile map",
+     "set": "n.body.collide_map"
+    },
+    "solid": {
+     "type": "Bool",
+     "default": false,
+     "es": "Los demás cuerpos se paran en él",
+     "en": "Other bodies stop at it",
+     "set": "n.body.solid"
+    },
+    "bounce": {
+     "type": "Fixed",
+     "default": 0,
+     "es": "Rebote: 0 se para, 1 vuelve igual de rápido",
+     "en": "Bounce: 0 stops, 1 comes back as fast",
+     "min": 0,
+     "max": 1,
+     "set": "n.body.bounce"
+    }
+   },
+   "signals": [
+    {
+     "name": "landed",
+     "es": "Tocó el suelo (data: velocidad de caída en 1/16 de píxel)",
+     "en": "Touched the floor (data: falling speed in 1/16 pixel)"
+    },
+    {
+     "name": "collided",
+     "es": "Se paró en un cuerpo sólido (data: su id)",
+     "en": "Stopped at a solid body (data: its id)"
+    }
+   ]
+  },
+  "StaticBody2D": {
+   "new": "new_static_body2d(name, x, y)",
+   "es": "Un cuerpo que no se mueve solo y para a los demás (pared, caja, plataforma móvil).",
+   "en": "A body that does not move by itself and stops the others (wall, crate, moving platform).",
+   "props": {
+    "layer": {
+     "type": "Int",
+     "default": 1,
+     "es": "Capas en las que está (bits)",
+     "en": "Layers it is in (bits)",
+     "min": 0,
+     "max": 65535,
+     "set": "n.body.layer"
+    }
+   },
+   "signals": []
+  },
+  "Area2D": {
+   "new": "new_area2d(name, x, y)",
+   "es": "Una zona que avisa de quién entra y sale; no empuja.",
+   "en": "A zone that tells who comes in and goes out; it does not push.",
+   "props": {
+    "layer": {
+     "type": "Int",
+     "default": 1,
+     "es": "Capas en las que está",
+     "en": "Layers it is in",
+     "min": 0,
+     "max": 65535,
+     "set": "n.area.layer"
+    },
+    "mask": {
+     "type": "Int",
+     "default": 1,
+     "es": "Capas de lo que ve",
+     "en": "Layers of what it sees",
+     "min": 0,
+     "max": 65535,
+     "set": "n.area.mask"
+    },
+    "monitoring": {
+     "type": "Bool",
+     "default": true,
+     "es": "Mira quién entra",
+     "en": "Watches who comes in",
+     "set": "n.area.monitoring"
+    }
+   },
+   "signals": [
+    {
+     "name": "body_entered",
+     "es": "Entró un cuerpo (data: su id)",
+     "en": "A body came in (data: its id)"
+    },
+    {
+     "name": "body_exited",
+     "es": "Salió un cuerpo",
+     "en": "A body went out"
+    },
+    {
+     "name": "area_entered",
+     "es": "Entró otra área",
+     "en": "Another area came in"
+    },
+    {
+     "name": "area_exited",
+     "es": "Salió otra área",
+     "en": "Another area went out"
+    }
+   ]
+  },
+  "TileMap": {
+   "new": "new_tilemap(name, file)",
+   "es": "Un mapa del editor de mapas de Forja (.fmap): sus capas se pintan en el fondo; la capa de choques para a los cuerpos.",
+   "en": "A map of Forja's map editor (.fmap): its layers are painted on the background; the collision layer stops bodies.",
+   "props": {
+    "file": {
+     "type": "Map",
+     "default": "",
+     "es": "Fichero .fmap",
+     "en": ".fmap file"
+    },
+    "tileset": {
+     "type": "Image",
+     "default": "",
+     "es": "Otro tileset (si no, el del mapa)",
+     "en": "Another tileset (if not, the map's)"
+    },
+    "iso": {
+     "type": "Bool",
+     "default": false,
+     "es": "Isométrico: tiles en rombo",
+     "en": "Isometric: diamond tiles",
+     "set": "n.map.iso"
+    },
+    "spawn": {
+     "type": "Spawn",
+     "default": {},
+     "es": "Clase de objeto del mapa -> escena que se pone en su sitio",
+     "en": "Kind of map object -> scene put in its place"
+    }
+   },
+   "signals": []
+  },
+  "Camera2D": {
+   "new": "new_camera2d(name)",
+   "es": "La cámara: sigue a un nodo, una pantalla cada vez, dentro de sus límites.",
+   "en": "The camera: follows a node, a screen at a time, within its limits.",
+   "props": {
+    "target": {
+     "type": "NodePath",
+     "default": "",
+     "es": "Ruta del nodo que sigue",
+     "en": "Path of the node it follows"
+    },
+    "limits": {
+     "type": "Limits",
+     "default": "map",
+     "es": "Tamaño del mundo, o \"map\": el del primer mapa",
+     "en": "Size of the world, or \"map\": the first map's"
+    }
+   },
+   "signals": []
+  },
+  "Label": {
+   "new": "new_label(name, x, y, text, pen, bg)",
+   "es": "Un texto. Con bg >= 0 se pinta en el fondo solo al cambiar (barato).",
+   "en": "A text. With bg >= 0 it is painted on the background only when it changes (cheap).",
+   "props": {
+    "text": {
+     "type": "String",
+     "default": "",
+     "es": "El texto",
+     "en": "The text"
+    },
+    "pen": {
+     "type": "Color",
+     "default": 1,
+     "es": "Color del texto",
+     "en": "Text colour",
+     "min": 0,
+     "max": 255
+    },
+    "bg": {
+     "type": "Color",
+     "default": 0,
+     "es": "Color de la caja (-1: encima en cada fotograma)",
+     "en": "Box colour (-1: on top every frame)",
+     "min": -1,
+     "max": 255
+    },
+    "bind": {
+     "type": "String",
+     "default": "",
+     "es": "Variable del juego que enseña",
+     "en": "Game variable it shows",
+     "set": "n.label.bind"
+    },
+    "prefix": {
+     "type": "String",
+     "default": "",
+     "es": "Texto delante del valor",
+     "en": "Text before the value",
+     "set": "n.label.prefix"
+    }
+   },
+   "signals": []
+  },
+  "Timer": {
+   "new": "new_timer(name, wait, one_shot)",
+   "es": "Avisa (timeout) al cabo de un tiempo, una vez o siempre.",
+   "en": "Says timeout after a while, once or again and again.",
+   "props": {
+    "wait": {
+     "type": "Int",
+     "default": 50,
+     "es": "Fotogramas de vídeo (50 son un segundo)",
+     "en": "Video frames (50 are a second)",
+     "min": 1,
+     "max": 100000
+    },
+    "one_shot": {
+     "type": "Bool",
+     "default": false,
+     "es": "Una vez",
+     "en": "Once"
+    },
+    "autostart": {
+     "type": "Bool",
+     "default": false,
+     "es": "Empieza al entrar en el árbol",
+     "en": "Starts when it enters the tree",
+     "set": "n.timer.autostart"
+    }
+   },
+   "signals": [
+    {
+     "name": "timeout",
+     "es": "Pasó el tiempo",
+     "en": "The time went by"
+    }
+   ]
+  },
+  "AudioPlayer": {
+   "new": "new_audio(name, file, channel)",
+   "es": "Un efecto de sonido (8SVX): play() lo suena.",
+   "en": "A sound effect (8SVX): play() sounds it.",
+   "props": {
+    "file": {
+     "type": "Sound",
+     "default": "",
+     "es": "Fichero 8SVX",
+     "en": "8SVX file"
+    },
+    "channel": {
+     "type": "Int",
+     "default": -1,
+     "es": "Canal 0 a 3 (-1: el primero libre)",
+     "en": "Channel 0 to 3 (-1: the first free one)",
+     "min": -1,
+     "max": 3
+    },
+    "volume": {
+     "type": "Int",
+     "default": 64,
+     "es": "Volumen",
+     "en": "Volume",
+     "min": 0,
+     "max": 64,
+     "set": "n.audio.volume"
+    }
+   },
+   "signals": []
+  },
+  "Particles2D": {
+   "new": "new_particles2d(name, x, y, amount, pen)",
+   "es": "Unos puntos que salen y caen (chispas, polvo): start() los suelta.",
+   "en": "A few dots that fly and fall (sparks, dust): start() lets them go.",
+   "props": {
+    "amount": {
+     "type": "Int",
+     "default": 8,
+     "es": "Cuántos",
+     "en": "How many",
+     "min": 1,
+     "max": 64
+    },
+    "pen": {
+     "type": "Color",
+     "default": 1,
+     "es": "Color",
+     "en": "Colour",
+     "min": 0,
+     "max": 255
+    },
+    "lifetime": {
+     "type": "Int",
+     "default": 25,
+     "es": "Fotogramas que duran",
+     "en": "Frames they last",
+     "min": 1,
+     "max": 500,
+     "set": "n.particles.lifetime"
+    },
+    "speed": {
+     "type": "Int",
+     "default": 24,
+     "es": "Velocidad (1/16 de píxel)",
+     "en": "Speed (1/16 pixel)",
+     "min": 0,
+     "max": 256,
+     "set": "n.particles.speed"
+    },
+    "gravity": {
+     "type": "Int",
+     "default": 2,
+     "es": "Gravedad (1/16 de píxel)",
+     "en": "Gravity (1/16 pixel)",
+     "min": -32,
+     "max": 32,
+     "set": "n.particles.gravity"
+    },
+    "size": {
+     "type": "Int",
+     "default": 2,
+     "es": "Lado de cada punto",
+     "en": "Side of each dot",
+     "min": 1,
+     "max": 8,
+     "set": "n.particles.size"
+    },
+    "one_shot": {
+     "type": "Bool",
+     "default": true,
+     "es": "Una vez por start()",
+     "en": "Once per start()",
+     "set": "n.particles.one_shot"
+    }
+   },
+   "signals": []
+  }
+ },
+ "behaviors": {
+  "Platformer": {
+   "es": "Corre y salta con gravedad (flechas o joystick, espacio o disparo). Pone las animaciones idle, walk y jump (y _left).",
+   "en": "Runs and jumps with gravity (arrows or joystick, space or fire). Plays the animations idle, walk and jump (and _left).",
+   "props": {
+    "speed": {
+     "type": "Fixed",
+     "default": 2,
+     "es": "Velocidad máxima",
+     "en": "Top speed",
+     "min": 0,
+     "max": 16,
+     "set": "b.speed"
+    },
+    "accel": {
+     "type": "Fixed",
+     "default": 0.25,
+     "es": "Aceleración por paso",
+     "en": "Acceleration a step",
+     "min": 0,
+     "max": 4,
+     "set": "b.accel"
+    },
+    "friction": {
+     "type": "Fixed",
+     "default": 0.3,
+     "es": "Frenada sin mando",
+     "en": "Braking without input",
+     "min": 0,
+     "max": 4,
+     "set": "b.friction"
+    },
+    "gravity": {
+     "type": "Fixed",
+     "default": 0.35,
+     "es": "Gravedad",
+     "en": "Gravity",
+     "min": 0,
+     "max": 4,
+     "set": "b.gravity"
+    },
+    "max_fall": {
+     "type": "Fixed",
+     "default": 6,
+     "es": "Velocidad máxima de caída",
+     "en": "Top falling speed",
+     "min": 0,
+     "max": 16,
+     "set": "b.max_fall"
+    },
+    "jump": {
+     "type": "Fixed",
+     "default": 5.5,
+     "es": "Fuerza del salto",
+     "en": "Jump speed",
+     "min": 0,
+     "max": 16,
+     "set": "b.jump"
+    },
+    "jumps": {
+     "type": "Int",
+     "default": 1,
+     "es": "Saltos seguidos (2: doble salto)",
+     "en": "Jumps in a row (2: double jump)",
+     "min": 0,
+     "max": 5,
+     "set": "b.jumps"
+    },
+    "player": {
+     "type": "Bool",
+     "default": true,
+     "es": "Lo mueve el jugador (si no, dir y want_jump)",
+     "en": "Moved by the player (if not, dir and want_jump)",
+     "set": "b.player"
+    }
+   },
+   "signals": [
+    {
+     "name": "jumped",
+     "es": "Saltó",
+     "en": "Jumped"
+    }
+   ]
+  },
+  "EightWay": {
+   "es": "Se mueve en ocho direcciones (vista cenital).",
+   "en": "Moves in eight directions (top-down view).",
+   "props": {
+    "speed": {
+     "type": "Fixed",
+     "default": 2,
+     "es": "Velocidad",
+     "en": "Speed",
+     "min": 0,
+     "max": 16,
+     "set": "b.speed"
+    },
+    "accel": {
+     "type": "Fixed",
+     "default": 0.5,
+     "es": "Aceleración",
+     "en": "Acceleration",
+     "min": 0,
+     "max": 16,
+     "set": "b.accel"
+    },
+    "player": {
+     "type": "Bool",
+     "default": true,
+     "es": "Lo mueve el jugador",
+     "en": "Moved by the player",
+     "set": "b.player"
+    }
+   },
+   "signals": []
+  },
+  "Bullet": {
+   "es": "Va en línea recta; con cuerpo, se quita al dar en una pared.",
+   "en": "Goes straight; with a body, it goes when it hits a wall.",
+   "props": {
+    "vx": {
+     "type": "Fixed",
+     "default": 4,
+     "es": "Velocidad x",
+     "en": "Speed x",
+     "min": -16,
+     "max": 16,
+     "set": "b.vx"
+    },
+    "vy": {
+     "type": "Fixed",
+     "default": 0,
+     "es": "Velocidad y",
+     "en": "Speed y",
+     "min": -16,
+     "max": 16,
+     "set": "b.vy"
+    },
+    "destroy_on_wall": {
+     "type": "Bool",
+     "default": true,
+     "es": "Se quita al chocar",
+     "en": "Goes when it hits",
+     "set": "b.destroy_on_wall"
+    }
+   },
+   "signals": []
+  },
+  "Follow": {
+   "es": "Va hacia otro nodo (por ruta o \"group:nombre\").",
+   "en": "Goes towards another node (by path or \"group:name\").",
+   "props": {
+    "target": {
+     "type": "NodePath",
+     "default": "/Player",
+     "es": "Ruta o grupo del que sigue",
+     "en": "Path or group of the one it follows",
+     "set": "b.target"
+    },
+    "speed": {
+     "type": "Fixed",
+     "default": 1,
+     "es": "Velocidad",
+     "en": "Speed",
+     "min": 0,
+     "max": 16,
+     "set": "b.speed"
+    },
+    "distance": {
+     "type": "Int",
+     "default": 0,
+     "es": "Se para a esta distancia",
+     "en": "Stops at this distance",
+     "min": 0,
+     "max": 320,
+     "set": "b.distance"
+    },
+    "only_x": {
+     "type": "Bool",
+     "default": false,
+     "es": "Solo en x (un rival en una carrera)",
+     "en": "Only in x (a rival in a race)",
+     "set": "b.only_x"
+    }
+   },
+   "signals": []
+  },
+  "Patrol": {
+   "es": "Anda en una dirección y se da la vuelta en paredes y bordes.",
+   "en": "Walks one way and turns at walls and edges.",
+   "props": {
+    "speed": {
+     "type": "Fixed",
+     "default": 0.75,
+     "es": "Velocidad",
+     "en": "Speed",
+     "min": 0,
+     "max": 8,
+     "set": "b.speed"
+    },
+    "dir": {
+     "type": "Int",
+     "default": -1,
+     "es": "Dirección al empezar",
+     "en": "Direction at the start",
+     "min": -1,
+     "max": 1,
+     "set": "b.dir"
+    },
+    "gravity": {
+     "type": "Fixed",
+     "default": 0.35,
+     "es": "Gravedad (0: vuela)",
+     "en": "Gravity (0: flies)",
+     "min": 0,
+     "max": 4,
+     "set": "b.gravity"
+    },
+    "turn_at_edges": {
+     "type": "Bool",
+     "default": true,
+     "es": "Se vuelve en los bordes del suelo",
+     "en": "Turns at the edges of the floor",
+     "set": "b.turn_at_edges"
+    }
+   },
+   "signals": []
+  },
+  "BounceEdges": {
+   "es": "Rebota en los bordes del mundo (la pelota del Pong).",
+   "en": "Bounces off the edges of the world (Pong's ball).",
+   "props": {
+    "vx": {
+     "type": "Fixed",
+     "default": 2,
+     "es": "Velocidad x",
+     "en": "Speed x",
+     "min": -16,
+     "max": 16,
+     "set": "b.vx"
+    },
+    "vy": {
+     "type": "Fixed",
+     "default": 2,
+     "es": "Velocidad y",
+     "en": "Speed y",
+     "min": -16,
+     "max": 16,
+     "set": "b.vy"
+    },
+    "left": {
+     "type": "Bool",
+     "default": true,
+     "es": "Rebota a la izquierda",
+     "en": "Bounces left",
+     "set": "b.left"
+    },
+    "right": {
+     "type": "Bool",
+     "default": true,
+     "es": "Rebota a la derecha",
+     "en": "Bounces right",
+     "set": "b.right"
+    },
+    "top": {
+     "type": "Bool",
+     "default": true,
+     "es": "Rebota arriba",
+     "en": "Bounces at the top",
+     "set": "b.top"
+    },
+    "bottom": {
+     "type": "Bool",
+     "default": true,
+     "es": "Rebota abajo",
+     "en": "Bounces at the bottom",
+     "set": "b.bottom"
+    }
+   },
+   "signals": [
+    {
+     "name": "bounced",
+     "es": "Rebotó (data: 0 en x, 1 en y)",
+     "en": "Bounced (data: 0 in x, 1 in y)"
+    }
+   ]
+  },
+  "Wrap": {
+   "es": "Sale por un lado del mundo y entra por el otro.",
+   "en": "Goes out one side of the world and in by the other.",
+   "props": {
+    "margin": {
+     "type": "Int",
+     "default": 0,
+     "es": "Margen",
+     "en": "Margin",
+     "min": 0,
+     "max": 320,
+     "set": "b.margin"
+    }
+   },
+   "signals": []
+  },
+  "DestroyOffscreen": {
+   "es": "Se quita al salir del mundo.",
+   "en": "Goes when it leaves the world.",
+   "props": {
+    "margin": {
+     "type": "Int",
+     "default": 32,
+     "es": "Margen",
+     "en": "Margin",
+     "min": 0,
+     "max": 320,
+     "set": "b.margin"
+    }
+   },
+   "signals": [
+    {
+     "name": "left_world",
+     "es": "Salió del mundo",
+     "en": "Left the world"
+    }
+   ]
+  },
+  "Health": {
+   "es": "Vida: oye \"damage\" y \"heal\"; parpadea tras un golpe.",
+   "en": "Life: hears \"damage\" and \"heal\"; blinks after a hit.",
+   "props": {
+    "hp": {
+     "type": "Int",
+     "default": 3,
+     "es": "Vida",
+     "en": "Life points",
+     "min": 1,
+     "max": 1000,
+     "set": "b.hp"
+    },
+    "max_hp": {
+     "type": "Int",
+     "default": 3,
+     "es": "Vida máxima",
+     "en": "Maximum life",
+     "min": 1,
+     "max": 1000,
+     "set": "b.max_hp"
+    },
+    "invulnerable": {
+     "type": "Int",
+     "default": 50,
+     "es": "Fotogramas sin daño tras un golpe",
+     "en": "Frames without damage after a hit",
+     "min": 0,
+     "max": 500,
+     "set": "b.invulnerable"
+    },
+    "destroy": {
+     "type": "Bool",
+     "default": true,
+     "es": "Se quita al morir",
+     "en": "Goes when it dies",
+     "set": "b.destroy"
+    },
+    "var_name": {
+     "type": "String",
+     "default": "",
+     "es": "Variable del juego con la vida",
+     "en": "Game variable with the life",
+     "set": "b.var_name"
+    }
+   },
+   "signals": [
+    {
+     "name": "hurt",
+     "es": "Recibió daño (data: vida que le queda)",
+     "en": "Was hurt (data: life left)"
+    },
+    {
+     "name": "died",
+     "es": "Se quedó sin vida",
+     "en": "Ran out of life"
+    }
+   ]
+  },
+  "Damage": {
+   "es": "Daña a los del grupo que toca.",
+   "en": "Hurts the ones of the group it touches.",
+   "props": {
+    "group": {
+     "type": "String",
+     "default": "player",
+     "es": "Grupo al que daña",
+     "en": "Group it hurts",
+     "set": "b.group"
+    },
+    "amount": {
+     "type": "Int",
+     "default": 1,
+     "es": "Daño",
+     "en": "Damage",
+     "min": 1,
+     "max": 1000,
+     "set": "b.amount"
+    },
+    "destroy_self": {
+     "type": "Bool",
+     "default": false,
+     "es": "Se quita al dañar (una bala)",
+     "en": "Goes when it hurts (a bullet)",
+     "set": "b.destroy_self"
+    }
+   },
+   "signals": []
+  },
+  "Pickup": {
+   "es": "Se recoge: suma a una variable, suena y se quita.",
+   "en": "Picked up: adds to a variable, sounds and goes.",
+   "props": {
+    "group": {
+     "type": "String",
+     "default": "player",
+     "es": "Grupo que lo recoge",
+     "en": "Group that picks it up",
+     "set": "b.group"
+    },
+    "var_name": {
+     "type": "String",
+     "default": "score",
+     "es": "Variable del juego",
+     "en": "Game variable",
+     "set": "b.var_name"
+    },
+    "amount": {
+     "type": "Int",
+     "default": 1,
+     "es": "Cuánto suma",
+     "en": "How much it adds",
+     "min": -1000,
+     "max": 1000,
+     "set": "b.amount"
+    },
+    "sound": {
+     "type": "Sound",
+     "default": "",
+     "es": "Sonido al recogerlo",
+     "en": "Sound when picked up",
+     "set": "b.sound"
+    }
+   },
+   "signals": [
+    {
+     "name": "picked",
+     "es": "Lo recogieron (data: id de quién)",
+     "en": "Picked up (data: id of who)"
+    }
+   ]
+  },
+  "Draggable": {
+   "es": "El ratón lo arrastra.",
+   "en": "The mouse drags it.",
+   "props": {},
+   "signals": [
+    {
+     "name": "drag_started",
+     "es": "Empezó a arrastrarse",
+     "en": "Started being dragged"
+    },
+    {
+     "name": "dropped",
+     "es": "Se soltó",
+     "en": "Was dropped"
+    }
+   ]
+  },
+  "Blink": {
+   "es": "Parpadea un rato o siempre.",
+   "en": "Blinks for a while or always.",
+   "props": {
+    "period": {
+     "type": "Int",
+     "default": 8,
+     "es": "Fotogramas encendido y apagado",
+     "en": "Frames on and off",
+     "min": 1,
+     "max": 100,
+     "set": "b.period"
+    },
+    "duration": {
+     "type": "Int",
+     "default": 0,
+     "es": "Cuánto dura (0: siempre)",
+     "en": "How long (0: always)",
+     "min": 0,
+     "max": 10000,
+     "set": "b.duration"
+    }
+   },
+   "signals": [
+    {
+     "name": "blink_finished",
+     "es": "Acabó de parpadear",
+     "en": "Stopped blinking"
+    }
+   ]
+  }
+ },
+ "actions": {
+  "add": {
+   "args": {
+    "var": "String",
+    "value": "Int"
+   },
+   "code": "game_add(VAR, VALUE)",
+   "es": "Suma a una variable del juego",
+   "en": "Adds to a game variable"
+  },
+  "set": {
+   "args": {
+    "var": "String",
+    "value": "Int"
+   },
+   "code": "game_set(VAR, VALUE)",
+   "es": "Pone una variable del juego",
+   "en": "Sets a game variable"
+  },
+  "sound": {
+   "args": {
+    "file": "Sound"
+   },
+   "code": "play_sound(FILE)",
+   "es": "Suena un efecto",
+   "en": "Plays a sound effect"
+  },
+  "music": {
+   "args": {
+    "file": "Music"
+   },
+   "code": "play_music(FILE)",
+   "es": "Empieza una música MOD",
+   "en": "Starts a MOD music"
+  },
+  "destroy": {
+   "args": {
+    "target": "self|other"
+   },
+   "code": "n.queue_free()",
+   "es": "Quita este nodo (o el otro)",
+   "en": "Removes this node (or the other)"
+  },
+  "emit": {
+   "args": {
+    "signal": "String",
+    "data": "Int"
+   },
+   "code": "n.emit(SIGNAL, DATA)",
+   "es": "Emite una señal",
+   "en": "Emits a signal"
+  },
+  "damage": {
+   "args": {
+    "value": "Int"
+   },
+   "code": "send_signal(other, \"damage\", n, VALUE)",
+   "es": "Daña al otro",
+   "en": "Hurts the other one"
+  },
+  "spawn": {
+   "args": {
+    "scene": "Scene",
+    "x": "Int",
+    "y": "Int"
+   },
+   "code": "spawn(n, scene_X(), X, Y)",
+   "es": "Pone una copia de otra escena junto a este nodo",
+   "en": "Puts a copy of another scene next to this node"
+  },
+  "play": {
+   "args": {
+    "target": "NodePath",
+    "anim": "String"
+   },
+   "code": "n.get_node(TARGET).play(ANIM)",
+   "es": "Pone una animación",
+   "en": "Plays an animation"
+  },
+  "start": {
+   "args": {
+    "target": "NodePath"
+   },
+   "code": "n.get_node(TARGET).start()",
+   "es": "Arranca un Timer o unas partículas",
+   "en": "Starts a Timer or particles"
+  },
+  "show": {
+   "args": {
+    "target": "NodePath"
+   },
+   "code": "n.visible = true",
+   "es": "Lo enseña",
+   "en": "Shows it"
+  },
+  "hide": {
+   "args": {
+    "target": "NodePath"
+   },
+   "code": "n.visible = false",
+   "es": "Lo esconde",
+   "en": "Hides it"
+  },
+  "change_scene": {
+   "args": {
+    "scene": "Scene"
+   },
+   "code": "change_scene(scene_X())",
+   "es": "Cambia de escena",
+   "en": "Changes the scene"
+  },
+  "quit": {
+   "args": {},
+   "code": "quit()",
+   "es": "Acaba el juego",
+   "en": "Ends the game"
+  },
+  "code": {
+   "args": {
+    "dash": "Code"
+   },
+   "code": "DASH",
+   "es": "Dash escrito a mano",
+   "en": "Hand-written Dash"
+  }
+ },
+ "functions": []
+}

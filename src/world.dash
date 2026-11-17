@@ -87,26 +87,31 @@ func new_tilemap_with(name: String, file: String, tileset: String) -> Node
         end
         l = l + 1
     end
+    # what kinds of collision tile it has (the physics skips what is not there)
+    if m.collision >= 0
+        y = 0
+        while y < m.height
+            x = 0
+            while x < m.width
+                v = tilemap_get(id, m.collision, x, y) & 0x3FFF
+                if v == TILE_SLOPE_UP or v == TILE_SLOPE_DOWN
+                    m.slopes = true
+                elif v == TILE_LADDER or v == TILE_DAMAGE
+                    m.specials = true
+                end
+                x = x + 1
+            end
+            y = y + 1
+        end
+    end
     n.map = m
     return n
 end
 
-# The collision tile at a world point (TILE_SOLID...), of the first map with a collision layer there
+# The collision tile at a world point (TILE_SOLID...), of the map that stops bodies (the first one with a
+# collision layer)
 func tile_at(wx: Int, wy: Int) -> Int
-    for n in fragua_tree.maps
-        m = n.map
-        if m.collision >= 0
-            mx = wx - n.global_x()
-            my = wy - n.global_y()
-            if mx >= 0 and my >= 0
-                v = tilemap_get(m.id, m.collision, mx / m.tile, my / m.tile) & 0x3FFF
-                if v != 0
-                    return v
-                end
-            end
-        end
-    end
-    return 0
+    return fragua_cm(fragua_cm_col(wx), fragua_cm_row(wy))
 end
 
 # Where the world shows on the screen (the rest stays for ui nodes: a score bar)
@@ -123,6 +128,51 @@ end
 func set_background_color(pen: Int)
     fragua_tree.bg_pen = pen
     fragua_tree.bg_dirty = true
+end
+
+# The colour of the screen out of the view (a score bar)
+func set_hud_color(pen: Int)
+    fragua_tree.hud_pen = pen
+    fragua_tree.bg_dirty = true
+end
+
+# The objects of a tile map of that kind ("enemy", "coin"...; "" all), as numbers for map_object_x...
+func map_objects(map: Node, kind: String) -> [Int]
+    var l: [Int] = []
+    if map == nil or map.map == nil
+        return l
+    end
+    id = map.map.id
+    i = 0
+    while i < tilemap_objects(id)
+        if kind == "" or tilemap_object_kind(id, i) == kind
+            l.push(i)
+        end
+        i = i + 1
+    end
+    return l
+end
+
+# Where an object of the map is, in the world
+func map_object_x(map: Node, i: Int) -> Int
+    return map.global_x() + tilemap_object_x(map.map.id, i)
+end
+
+func map_object_y(map: Node, i: Int) -> Int
+    return map.global_y() + tilemap_object_y(map.map.id, i)
+end
+
+func map_object_name(map: Node, i: Int) -> String
+    return tilemap_object_name(map.map.id, i)
+end
+
+# The size of a tile map in pixels (for the camera's limits)
+func map_pixel_width(map: Node) -> Int
+    return map.map.width * map.map.tile
+end
+
+func map_pixel_height(map: Node) -> Int
+    return map.map.height * map.map.tile
 end
 
 # A world point on the screen
@@ -213,16 +263,11 @@ func fragua_draw_map(n: Node)
     if tw <= 0 or th <= 0
         return
     end
-    first = true
+    # every layer with its colour 0 transparent: the background colour shows through
     l = 0
     while l < tilemap_layers(m.id)
         if tilemap_layer_type(m.id, l) == 0 and tilemap_layer_visible(m.id, l)
-            if first or (m.front >= 0 and l >= m.front)
-                tilemap_draw(m.id, l, m.tileset.id, tx, ty, tw, th, sx, sy)
-            else
-                tilemap_draw_masked(m.id, l, m.tileset.id, tx, ty, tw, th, sx, sy)
-            end
-            first = false
+            tilemap_draw_masked(m.id, l, m.tileset.id, tx, ty, tw, th, sx, sy)
         end
         l = l + 1
     end
@@ -234,6 +279,21 @@ func fragua_background()
     bitmap_draw_to(FRAGUA_BACKGROUND)
     gfx_pen(t.bg_pen)
     gfx_rect(0, 0, s.width - 1, s.height - 1)
+    if t.hud_pen >= 0
+        gfx_pen(t.hud_pen)
+        if t.view_y > 0
+            gfx_rect(0, 0, s.width - 1, t.view_y - 1)
+        end
+        if t.view_y + t.view_h < s.height
+            gfx_rect(0, t.view_y + t.view_h, s.width - 1, s.height - 1)
+        end
+        if t.view_x > 0
+            gfx_rect(0, 0, t.view_x - 1, s.height - 1)
+        end
+        if t.view_x + t.view_w < s.width
+            gfx_rect(t.view_x + t.view_w, 0, s.width - 1, s.height - 1)
+        end
+    end
     for n in t.maps
         if fragua_shown(n)
             fragua_draw_map(n)

@@ -10,8 +10,8 @@
 #   end
 #
 # The map: the collision layer of the tile maps (TILE_SOLID, TILE_PLATFORM: only from above, TILE_SLOPE_UP and
-# TILE_SLOPE_DOWN: the body walks on the slope; TILE_LADDER and TILE_DAMAGE do not stop it: body.touching says
-# if it is on one, a bit each: 1 << TILE_LADDER).
+# TILE_SLOPE_DOWN: the body walks on the slope; TILE_LADDER and TILE_DAMAGE do not stop it: n.touches_tile(kind)
+# says if it is on one).
 # Bodies: one with body.solid stops the others whose mask has its layer (body.layer & other.mask).
 # Signals of a body: "landed" when it touches the floor (data: the speed it fell at, in 1/16 pixel a step), and
 # "collided" when it stops at a solid body (data: its id).
@@ -32,51 +32,60 @@ func fragua_box(n: Node)
     gx = n.global_x()
     gy = n.global_y()
     fragua_br = 0
-    var sh: Node = n.col
     if n.shape != nil
-        sh = n
-        gx = gx - n.x
-        gy = gy - n.y
-    end
-    if sh != nil
-        d = sh.shape
-        if d.kind == SHAPE_CIRCLE
-            fragua_br = d.r
-            fragua_bx = gx + sh.x - d.r
-            fragua_by = gy + sh.y - d.r
-        else
-            fragua_bx = gx + sh.x
-            fragua_by = gy + sh.y
-        end
-        fragua_bw = d.w
-        fragua_bh = d.h
+        fragua_shape_box(gx - n.x, gy - n.y, n)
         return
     end
-    var sp: Node = nil
+    if n.col != nil
+        fragua_shape_box(gx, gy, n.col)
+        return
+    end
     if n.sprite != nil
-        sp = n
-    else
-        for c in n.children
-            if c.sprite != nil and sp == nil
-                sp = c
-            end
-        end
-    end
-    if sp != nil
-        fragua_bx = gx + sp.sprite.ox
-        fragua_by = gy + sp.sprite.oy
-        if sp != n
-            fragua_bx = fragua_bx + sp.x
-            fragua_by = fragua_by + sp.y
-        end
-        fragua_bw = sp.sprite.width
-        fragua_bh = sp.sprite.height
+        fragua_bx = gx + n.sprite.ox
+        fragua_by = gy + n.sprite.oy
+        fragua_bw = n.sprite.width
+        fragua_bh = n.sprite.height
         return
+    end
+    i = 0
+    while i < n.children.length
+        if n.children[i].sprite != nil
+            fragua_bx = gx + n.children[i].x + n.children[i].sprite.ox
+            fragua_by = gy + n.children[i].y + n.children[i].sprite.oy
+            fragua_bw = n.children[i].sprite.width
+            fragua_bh = n.children[i].sprite.height
+            return
+        end
+        i = i + 1
     end
     fragua_bx = gx
     fragua_by = gy
     fragua_bw = 0
     fragua_bh = 0
+end
+
+# The box of a shape node sh whose parent is at px, py
+func fragua_shape_box(px: Int, py: Int, sh: Node)
+    if sh.shape.kind == SHAPE_CIRCLE
+        fragua_br = sh.shape.r
+        fragua_bx = px + sh.x - sh.shape.r
+        fragua_by = py + sh.y - sh.shape.r
+    else
+        fragua_bx = px + sh.x
+        fragua_by = py + sh.y
+    end
+    fragua_bw = sh.shape.w
+    fragua_bh = sh.shape.h
+end
+
+# Its box kept in the node (bx, by, bw, bh, br), for the areas
+func fragua_cache_box(n: Node)
+    fragua_box(n)
+    n.bx = fragua_bx
+    n.by = fragua_by
+    n.bw = fragua_bw
+    n.bh = fragua_bh
+    n.br = fragua_br
 end
 
 func fragua_hitbox(n: Node) -> Rect
@@ -146,68 +155,65 @@ func fragua_overlaps(a: Node, b: Node) -> Bool
 end
 
 # --- the map, cell by cell ---
+# Only the first tile map with a collision layer stops bodies (its numbers are kept in the tree once a frame:
+# fragua_tree.cm_*), so these functions touch no object (Dash's reference counting makes that dear).
 
-# The collision cell at world point, of the map m (n its node); 0 outside
-func fragua_cell(n: Node, wx: Int, wy: Int) -> Int
-    m = n.map
-    mx = wx - n.global_x()
-    my = wy - n.global_y()
-    if mx < 0 or my < 0
+# The collision cell at a cell of the map (0 outside it)
+func fragua_cm(c: Int, r: Int) -> Int
+    if c < 0 or r < 0 or c >= fragua_tree.cm_w or r >= fragua_tree.cm_h
         return 0
     end
-    return tilemap_get(m.id, m.collision, mx / m.tile, my / m.tile) & 0x3FFF
+    return tilemap_get(fragua_tree.cm_id, fragua_tree.cm_layer, c, r) & 0x3FFF
 end
 
-# How far a box can go in x (dx) before a solid cell of the maps
+# The cell (column or row) of a world coordinate; -1 for anything left of (or above) the map
+func fragua_cm_col(wx: Int) -> Int
+    if wx < fragua_tree.cm_x
+        return -1
+    end
+    return (wx - fragua_tree.cm_x) / fragua_tree.cm_tile
+end
+
+func fragua_cm_row(wy: Int) -> Int
+    if wy < fragua_tree.cm_y
+        return -1
+    end
+    return (wy - fragua_tree.cm_y) / fragua_tree.cm_tile
+end
+
+# How far a box can go in x (dx) before a solid cell
 func fragua_map_x(x: Int, y: Int, w: Int, h: Int, dx: Int) -> Int
-    for n in fragua_tree.maps
-        m = n.map
-        if m.collision >= 0
-            ts = m.tile
-            ox = n.global_x()
-            oy = n.global_y()
-            r0 = (y - oy) / ts
-            r1 = (y + h - 1 - oy) / ts
-            if dx > 0
-                c0 = (x + w - ox) / ts            # the first column it goes into
-                c1 = (x + w - 1 + dx - ox) / ts
-                c = c0
-                while c <= c1 and dx > 0
-                    r = r0
-                    while r <= r1
-                        v = tilemap_get(m.id, m.collision, c, r) & 0x3FFF
-                        if v == TILE_SOLID
-                            lim = ox + c * ts - (x + w)
-                            if lim < dx
-                                dx = lim
-                            end
-                        end
-                        r = r + 1
-                    end
-                    c = c + 1
+    if fragua_tree.cm_id < 0 or dx == 0
+        return dx
+    end
+    ts = fragua_tree.cm_tile
+    r0 = fragua_cm_row(y)
+    r1 = fragua_cm_row(y + h - 1)
+    if dx > 0
+        c = fragua_cm_col(x + w)
+        c1 = fragua_cm_col(x + w - 1 + dx)
+        while c <= c1
+            r = r0
+            while r <= r1
+                if fragua_cm(c, r) == TILE_SOLID
+                    return fragua_tree.cm_x + c * ts - (x + w)
                 end
-            elif dx < 0
-                c0 = (x - 1 - ox) / ts
-                c1 = (x + dx - ox) / ts
-                if x + dx - ox < 0
-                    c1 = -1
-                end
-                c = c0
-                while c >= c1 and c >= 0 and dx < 0
-                    r = r0
-                    while r <= r1
-                        v = tilemap_get(m.id, m.collision, c, r) & 0x3FFF
-                        if v == TILE_SOLID
-                            lim = ox + (c + 1) * ts - x
-                            if lim > dx
-                                dx = lim
-                            end
-                        end
-                        r = r + 1
-                    end
-                    c = c - 1
-                end
+                r = r + 1
             end
+            c = c + 1
+        end
+    else
+        c = fragua_cm_col(x - 1)
+        c1 = fragua_cm_col(x + dx)
+        while c >= c1 and c >= 0
+            r = r0
+            while r <= r1
+                if fragua_cm(c, r) == TILE_SOLID
+                    return fragua_tree.cm_x + (c + 1) * ts - x
+                end
+                r = r + 1
+            end
+            c = c - 1
         end
     end
     return dx
@@ -215,54 +221,39 @@ end
 
 # In y: solid cells, and platforms when going down from above them
 func fragua_map_y(x: Int, y: Int, w: Int, h: Int, dy: Int) -> Int
-    for n in fragua_tree.maps
-        m = n.map
-        if m.collision >= 0
-            ts = m.tile
-            ox = n.global_x()
-            oy = n.global_y()
-            c0 = (x - ox) / ts
-            c1 = (x + w - 1 - ox) / ts
-            if dy > 0
-                r0 = (y + h - oy) / ts
-                r1 = (y + h - 1 + dy - oy) / ts
-                r = r0
-                while r <= r1 and dy > 0
-                    c = c0
-                    while c <= c1
-                        v = tilemap_get(m.id, m.collision, c, r) & 0x3FFF
-                        if v == TILE_SOLID or (v == TILE_PLATFORM and y + h <= oy + r * ts)
-                            lim = oy + r * ts - (y + h)
-                            if lim < dy
-                                dy = lim
-                            end
-                        end
-                        c = c + 1
-                    end
-                    r = r + 1
+    if fragua_tree.cm_id < 0 or dy == 0
+        return dy
+    end
+    ts = fragua_tree.cm_tile
+    c0 = fragua_cm_col(x)
+    c1 = fragua_cm_col(x + w - 1)
+    if dy > 0
+        r = fragua_cm_row(y + h)
+        r1 = fragua_cm_row(y + h - 1 + dy)
+        while r <= r1
+            top = fragua_tree.cm_y + r * ts
+            c = c0
+            while c <= c1
+                v = fragua_cm(c, r)
+                if v == TILE_SOLID or (v == TILE_PLATFORM and y + h <= top)
+                    return top - (y + h)
                 end
-            elif dy < 0
-                r0 = (y - 1 - oy) / ts
-                r1 = (y + dy - oy) / ts
-                if y + dy - oy < 0
-                    r1 = -1
-                end
-                r = r0
-                while r >= r1 and r >= 0 and dy < 0
-                    c = c0
-                    while c <= c1
-                        v = tilemap_get(m.id, m.collision, c, r) & 0x3FFF
-                        if v == TILE_SOLID
-                            lim = oy + (r + 1) * ts - y
-                            if lim > dy
-                                dy = lim
-                            end
-                        end
-                        c = c + 1
-                    end
-                    r = r - 1
-                end
+                c = c + 1
             end
+            r = r + 1
+        end
+    else
+        r = fragua_cm_row(y - 1)
+        r1 = fragua_cm_row(y + dy)
+        while r >= r1 and r >= 0
+            c = c0
+            while c <= c1
+                if fragua_cm(c, r) == TILE_SOLID
+                    return fragua_tree.cm_y + (r + 1) * ts - y
+                end
+                c = c + 1
+            end
+            r = r - 1
         end
     end
     return dy
@@ -270,62 +261,43 @@ end
 
 # The floor of a slope under the point (px, py): its y in the world, or -1 if there is no slope there
 func fragua_slope_floor(px: Int, py: Int) -> Int
-    for n in fragua_tree.maps
-        m = n.map
-        if m.collision >= 0
-            ts = m.tile
-            ox = n.global_x()
-            oy = n.global_y()
-            if px >= ox and py >= oy
-                c = (px - ox) / ts
-                r = (py - oy) / ts
-                v = tilemap_get(m.id, m.collision, c, r) & 0x3FFF
-                if v == TILE_SLOPE_UP or v == TILE_SLOPE_DOWN
-                    local = px - ox - c * ts
-                    rise = local + 1
-                    if v == TILE_SLOPE_DOWN
-                        rise = ts - local
-                    end
-                    return oy + (r + 1) * ts - rise
-                end
-            end
-        end
+    if fragua_tree.cm_id < 0
+        return -1
     end
-    return -1
+    c = fragua_cm_col(px)
+    r = fragua_cm_row(py)
+    v = fragua_cm(c, r)
+    if v != TILE_SLOPE_UP and v != TILE_SLOPE_DOWN
+        return -1
+    end
+    ts = fragua_tree.cm_tile
+    local = px - fragua_tree.cm_x - c * ts
+    rise = local + 1
+    if v == TILE_SLOPE_DOWN
+        rise = ts - local
+    end
+    return fragua_tree.cm_y + (r + 1) * ts - rise
 end
 
 # The kinds of collision tile under a box (a bit each)
 func fragua_touching(x: Int, y: Int, w: Int, h: Int) -> Int
     bits = 0
-    for n in fragua_tree.maps
-        m = n.map
-        if m.collision >= 0
-            ts = m.tile
-            ox = n.global_x()
-            oy = n.global_y()
-            if x + w > ox and y + h > oy
-                c0 = (x - ox) / ts
-                if x < ox
-                    c0 = 0
-                end
-                r0 = (y - oy) / ts
-                if y < oy
-                    r0 = 0
-                end
-                r = r0
-                while r <= (y + h - 1 - oy) / ts
-                    c = c0
-                    while c <= (x + w - 1 - ox) / ts
-                        v = tilemap_get(m.id, m.collision, c, r) & 0x3FFF
-                        if v > 0 and v < 16
-                            bits = bits | (1 << v)
-                        end
-                        c = c + 1
-                    end
-                    r = r + 1
-                end
+    if fragua_tree.cm_id < 0
+        return 0
+    end
+    r = fragua_cm_row(y)
+    r1 = fragua_cm_row(y + h - 1)
+    while r <= r1
+        c = fragua_cm_col(x)
+        c1 = fragua_cm_col(x + w - 1)
+        while c <= c1
+            v = fragua_cm(c, r)
+            if v > 0 and v < 16
+                bits = bits | (1 << v)
             end
+            c = c + 1
         end
+        r = r + 1
     end
     return bits
 end
@@ -336,8 +308,13 @@ var fragua_hit_id: Int = 0
 
 func fragua_bodies_x(me: Node, x: Int, y: Int, w: Int, h: Int, dx: Int) -> Int
     fragua_hit_id = 0
-    for o in fragua_tree.bodies
-        if o != me and o.body.solid and (o.body.layer & me.body.mask) != 0
+    if fragua_tree.solids == 0
+        return dx
+    end
+    i = 0
+    while i < fragua_tree.bodies.length
+        if fragua_tree.bodies[i].body.solid and fragua_tree.bodies[i] != me and (fragua_tree.bodies[i].body.layer & me.body.mask) != 0
+            o = fragua_tree.bodies[i]
             fragua_box(o)
             if y < fragua_by + fragua_bh and fragua_by < y + h
                 if dx > 0 and fragua_bx >= x + w and fragua_bx < x + w + dx
@@ -349,14 +326,20 @@ func fragua_bodies_x(me: Node, x: Int, y: Int, w: Int, h: Int, dx: Int) -> Int
                 end
             end
         end
+        i = i + 1
     end
     return dx
 end
 
 func fragua_bodies_y(me: Node, x: Int, y: Int, w: Int, h: Int, dy: Int) -> Int
     fragua_hit_id = 0
-    for o in fragua_tree.bodies
-        if o != me and o.body.solid and (o.body.layer & me.body.mask) != 0
+    if fragua_tree.solids == 0
+        return dy
+    end
+    i = 0
+    while i < fragua_tree.bodies.length
+        if fragua_tree.bodies[i].body.solid and fragua_tree.bodies[i] != me and (fragua_tree.bodies[i].body.layer & me.body.mask) != 0
+            o = fragua_tree.bodies[i]
             fragua_box(o)
             if x < fragua_bx + fragua_bw and fragua_bx < x + w
                 if dy > 0 and fragua_by >= y + h and fragua_by < y + h + dy
@@ -368,6 +351,7 @@ func fragua_bodies_y(me: Node, x: Int, y: Int, w: Int, h: Int, dy: Int) -> Int
                 end
             end
         end
+        i = i + 1
     end
     return dy
 end
@@ -447,7 +431,7 @@ func fragua_move_and_slide(n: Node)
     n.y = n.y + dy
     y = y + dy
     # slopes: the foot (the middle of the bottom edge) on the floor of the slope
-    if b.collide_map and b.vy >= 0
+    if b.collide_map and b.vy >= 0 and fragua_tree.cm_slopes
         fx = x + w / 2
         f = fragua_slope_floor(fx, y + h - 1)
         if f < 0 and was_on_floor
@@ -466,10 +450,6 @@ func fragua_move_and_slide(n: Node)
             b.vy = 0
             b.ry = 0
         end
-    end
-    b.touching = 0
-    if b.collide_map
-        b.touching = fragua_touching(x, y, w, h)
     end
     if b.on_floor and not was_on_floor
         n.emit("landed", Int(fall * 16))
@@ -534,49 +514,99 @@ func apply_gravity(n: Node, g: Fixed, max_fall: Fixed)
 end
 
 # --- areas: who comes in and goes out, at each physics step ---
+# The boxes are worked out once a step (fragua_cache_box) and compared in place: with 25 coins and 9 bodies this
+# is what costs most, and Dash's reference counting makes each object kept in a variable dear.
 
-func fragua_area_check(a: Node, o: Node, kind: String)
-    ad = a.area
-    inside = ad.inside.has(o.id)
-    now = fragua_overlaps(a, o)
-    if now and not inside
-        ad.inside.push(o.id)
-        a.emit(kind + "_entered", o.id)
-    elif inside and not now
-        i = 0
-        while i < ad.inside.length
-            if ad.inside[i] == o.id
-                ad.inside.remove(i)
+func fragua_area_enter(a: Node, o: Node, kind: String)
+    a.area.inside.push(o.id)
+    a.emit(kind + "_entered", o.id)
+end
+
+func fragua_area_leave(a: Node, k: Int, kind: String)
+    id = a.area.inside[k]
+    a.area.inside.remove(k)
+    a.emit(kind + "_exited", id)
+end
+
+# Do the cached boxes of a and o overlap (circles with their radius)
+func fragua_cached_overlap(a: Node, o: Node) -> Bool
+    if not (a.bx < o.bx + o.bw and o.bx < a.bx + a.bw and a.by < o.by + o.bh and o.by < a.by + a.bh)
+        return false
+    end
+    if a.br == 0 and o.br == 0
+        return true
+    end
+    return fragua_overlaps(a, o)
+end
+
+func fragua_area_scan(a: Node)
+    mask = a.area.mask
+    # who left: out of the tree (no signal) or not overlapping now
+    k = a.area.inside.length - 1
+    while k >= 0
+        o = node_by_id(a.area.inside[k])
+        if o == nil or o.dead
+            a.area.inside.remove(k)
+        elif not fragua_cached_overlap(a, o)
+            if o.area != nil
+                fragua_area_leave(a, k, "area")
+            else
+                fragua_area_leave(a, k, "body")
             end
-            i = i + 1
         end
-        a.emit(kind + "_exited", o.id)
+        k = k - 1
+    end
+    # who came in
+    j = 0
+    while j < fragua_tree.bodies.length
+        if (fragua_tree.bodies[j].body.layer & mask) != 0
+            if a.bx < fragua_tree.bodies[j].bx + fragua_tree.bodies[j].bw and fragua_tree.bodies[j].bx < a.bx + a.bw and a.by < fragua_tree.bodies[j].by + fragua_tree.bodies[j].bh and fragua_tree.bodies[j].by < a.by + a.bh
+                o = fragua_tree.bodies[j]
+                if o != a.parent and not o.dead and not a.area.inside.has(o.id) and fragua_cached_overlap(a, o)
+                    fragua_area_enter(a, o, "body")
+                end
+            end
+        end
+        j = j + 1
+    end
+    if fragua_tree.area_layers != 0 and (fragua_tree.area_layers & mask) != 0
+        j = 0
+        while j < fragua_tree.areas.length
+            if (fragua_tree.areas[j].area.layer & mask) != 0 and fragua_tree.areas[j].active and fragua_tree.areas[j] != a
+                o = fragua_tree.areas[j]
+                if not o.dead and not a.area.inside.has(o.id) and fragua_cached_overlap(a, o)
+                    fragua_area_enter(a, o, "area")
+                end
+            end
+            j = j + 1
+        end
     end
 end
 
 func fragua_areas_update()
-    t = fragua_tree
-    for a in t.areas
-        ad = a.area
-        if ad.monitoring and not a.dead
-            # who left the tree is out without a signal
-            i = ad.inside.length - 1
-            while i >= 0
-                if not t.by_id.has(ad.inside[i])
-                    ad.inside.remove(i)
-                end
-                i = i - 1
-            end
-            for o in t.bodies
-                if (o.body.layer & ad.mask) != 0 and not o.dead and o != a.parent
-                    fragua_area_check(a, o, "body")
-                end
-            end
-            for o in t.areas
-                if o != a and (o.area.layer & ad.mask) != 0 and not o.dead
-                    fragua_area_check(a, o, "area")
-                end
-            end
+    if fragua_tree.areas.length == 0
+        return
+    end
+    layers = 0
+    i = 0
+    while i < fragua_tree.areas.length
+        if fragua_tree.areas[i].active
+            fragua_cache_box(fragua_tree.areas[i])
+            layers = layers | fragua_tree.areas[i].area.layer
         end
+        i = i + 1
+    end
+    fragua_tree.area_layers = layers
+    i = 0
+    while i < fragua_tree.bodies.length
+        fragua_cache_box(fragua_tree.bodies[i])
+        i = i + 1
+    end
+    i = 0
+    while i < fragua_tree.areas.length
+        if fragua_tree.areas[i].active and fragua_tree.areas[i].area.monitoring and not fragua_tree.areas[i].dead
+            fragua_area_scan(fragua_tree.areas[i])
+        end
+        i = i + 1
     end
 end

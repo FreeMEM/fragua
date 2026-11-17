@@ -61,6 +61,11 @@ struct SpriteData
     shown: Bool = false           # a hardware sprite on screen
     width: Int = 0
     height: Int = 0
+    cur: [Int] = nil              # the frames, speed and looping of the animation playing
+    cur_speed: Int = 1
+    cur_loop: Bool = true
+    base: String = ""             # what play_facing asked for last (and facing which way)
+    facing: Int = 0
 end
 
 struct ShapeData
@@ -79,7 +84,6 @@ struct BodyData
     on_wall: Bool = false
     on_ceiling: Bool = false
     floor_tile: Int = 0           # the kind of the collision tile under it (TILE_SOLID...)
-    touching: Int = 0             # the kinds of collision tile it overlaps, a bit each (1 << TILE_LADDER...)
     layer: Int = 1                # the layers it is in (bits), for areas and other bodies
     mask: Int = 1                 # the layers of solid bodies it stops at
     collide_map: Bool = true      # stops at the solid tiles of the tile maps
@@ -89,7 +93,7 @@ struct BodyData
 end
 
 struct AreaData
-    layer: Int = 1
+    layer: Int = 0                # other areas see it if their mask has its layer (0: none does)
     mask: Int = 1                 # the layers of the bodies (and areas) it sees
     monitoring: Bool = true
     inside: [Int] = []            # the ids of what is inside now
@@ -99,10 +103,11 @@ struct MapData
     id: Int = -1                  # the tile map of Dash
     tileset: Image = nil
     collision: Int = -1           # the collision layer (type 1 in Forja's editor), or -1
+    slopes: Bool = false          # its collision layer has slopes
+    specials: Bool = false        # and ladders or damage
     tile: Int = 16
     width: Int = 0                # in cells
     height: Int = 0
-    front: Int = -1               # from this layer on, drawn with its colour 0 transparent (-1: none)
 end
 
 struct CameraData
@@ -184,7 +189,14 @@ struct Node
     ready_done: Bool = false
     dead: Bool = false            # queue_free'd: it goes at the end of the frame
     paused: Bool = false          # no process, physics_process or behaviours (its children go on)
+    always_active: Bool = false   # works also far from the camera (if not, only near it: see set_active_margin)
+    active: Bool = true           # near the camera in this frame (the tree works it out)
     weak col: Node = nil          # its collision shape (the first SHAPE2D child)
+    bx: Int = 0                   # its box in the world, as the areas saw it in the last physics step
+    by: Int = 0
+    bw: Int = 0
+    bh: Int = 0
+    br: Int = 0
     sprite: SpriteData = nil
     shape: ShapeData = nil
     body: BodyData = nil
@@ -397,8 +409,12 @@ struct Node
                 s.pos = 0
                 s.tick = 0
                 s.playing = true
-                s.frame = s.anims[anim][0]
+                s.cur = s.anims[anim]
+                s.cur_speed = s.speeds[anim]
+                s.cur_loop = s.loops[anim]
+                s.frame = s.cur[0]
             end
+            s.base = ""
         elif self.audio != nil
             fragua_audio_play(self)
         end
@@ -437,6 +453,12 @@ struct Node
     # Body: moves by its speed, stopping at walls (see physics.dash)
     func move_and_slide()
         fragua_move_and_slide(self)
+    end
+
+    # Body or area: it overlaps a collision tile of that kind (TILE_LADDER, TILE_DAMAGE...) now
+    func touches_tile(kind: Int) -> Bool
+        fragua_box(self)
+        return (fragua_touching(fragua_bx, fragua_by, fragua_bw, fragua_bh) & (1 << kind)) != 0
     end
 
     # The box it collides with, in world coordinates (its shape, or else its picture)

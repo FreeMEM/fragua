@@ -1,0 +1,613 @@
+# Ready-made behaviours, as in GameMaker or Construct: put one on a node and set its properties, and the node does
+# it without code. Each one is a struct with the Script interface; its fields are its properties (the scene editor
+# of Forja shows them; api/fragua.json says their kind, default and range).
+#
+#   player.add_behavior(Platformer())               # runs and jumps with the arrows / joystick, with gravity
+#   enemy.add_behavior(Patrol())                    # walks and turns at walls and edges
+#   coin.add_behavior(Pickup("player", "score", 10, "coin.8svx"))
+#   enemy.add_behavior(Damage("player", 1))         # hurts the "player" that touches it
+#   player.add_behavior(Health(3))                  # takes "damage", blinks, "died" at 0
+#
+# Speeds in pixels a physics step (50 a second), in Fixed. The behaviours that move a node use its body
+# (move_and_slide) if it has one; if not, they move its position.
+
+import "tree.dash"
+import "physics.dash"
+import "extras.dash"
+
+# The node with the animations: itself, or its first child that has them
+func anim_node(n: Node) -> Node
+    if n.sprite != nil and n.sprite.anims.length > 0
+        return n
+    end
+    i = 0
+    while i < n.children.length
+        if n.children[i].sprite != nil and n.children[i].sprite.anims.length > 0
+            return n.children[i]
+        end
+        i = i + 1
+    end
+    return nil
+end
+
+# Plays anim on the node (or its animated child); with facing < 0, anim + "_left" if there is one. Called in each
+# step by the behaviours: it does nothing if it is what is playing already.
+func play_facing(n: Node, anim: String, facing: Int)
+    if n.sprite != nil and n.sprite.anims.length > 0
+        fragua_play_facing(n, anim, facing)
+        return
+    end
+    i = 0
+    while i < n.children.length
+        if n.children[i].sprite != nil and n.children[i].sprite.anims.length > 0
+            fragua_play_facing(n.children[i], anim, facing)
+            return
+        end
+        i = i + 1
+    end
+end
+
+func fragua_play_facing(a: Node, anim: String, facing: Int)
+    if a.sprite.base == anim and a.sprite.facing == facing
+        return
+    end
+    if facing < 0 and a.sprite.anims.has(anim + "_left")
+        a.play(anim + "_left")
+    elif a.sprite.anims.has(anim)
+        a.play(anim)
+    end
+    a.sprite.base = anim
+    a.sprite.facing = facing
+end
+
+# Moves a node by dx, dy pixels (Fixed): its body if it has one (stopping at walls), or its position
+func move_node(n: Node, dx: Fixed, dy: Fixed)
+    if n.body != nil
+        n.body.vx = dx
+        n.body.vy = dy
+        n.move_and_slide()
+    else
+        n.x = n.x + Int(dx)
+        n.y = n.y + Int(dy)
+    end
+end
+
+# A signal straight to a node (its script and behaviours), now
+func send_signal(to: Node, name: String, from: Node, data: Int)
+    if to != nil and not to.dead
+        fragua_deliver(to, name, from, data)
+    end
+end
+
+# --- Platformer: runs and jumps with gravity ---
+struct Platformer: Script
+    speed: Fixed = Fixed(2)           # top speed running
+    accel: Fixed = Fixed(0.25)        # speed gained each step
+    friction: Fixed = Fixed(0.3)      # speed lost each step without input
+    gravity: Fixed = Fixed(0.35)
+    max_fall: Fixed = Fixed(6)
+    jump: Fixed = Fixed(5.5)          # the speed up when jumping
+    jumps: Int = 1                    # 2: double jump
+    player: Bool = true               # moved by the actions left, right and jump; false: by dir and want_jump
+    dir: Int = 0                      # -1, 0 or 1 when not player
+    want_jump: Bool = false
+    facing: Int = 1
+    jumps_left: Int = 0
+
+    func ready(n: Node)
+        if n.body == nil
+            n.body = BodyData()
+        end
+    end
+
+    func process(n: Node, delta: Int)
+    end
+
+    func physics_process(n: Node)
+        b = n.body
+        d = self.dir
+        j = self.want_jump
+        if self.player
+            d = action_axis("left", "right")
+            j = action_just_pressed("jump")
+        end
+        if d != 0
+            accelerate_x(n, self.speed * d, self.accel)
+            self.facing = d
+        else
+            friction_x(n, self.friction)
+        end
+        apply_gravity(n, self.gravity, self.max_fall)
+        if b.on_floor
+            self.jumps_left = self.jumps
+        end
+        if j and self.jumps_left > 0
+            b.vy = 0 - self.jump
+            self.jumps_left = self.jumps_left - 1
+            n.emit("jumped", 0)
+        end
+        self.want_jump = false
+        n.move_and_slide()
+        if not b.on_floor
+            play_facing(n, "jump", self.facing)
+        elif d != 0
+            play_facing(n, "walk", self.facing)
+        else
+            play_facing(n, "idle", self.facing)
+        end
+    end
+
+    func on_signal(n: Node, name: String, from: Node, data: Int)
+    end
+end
+
+# --- EightWay: moves in eight directions (top-down view) ---
+struct EightWay: Script
+    speed: Fixed = Fixed(2)
+    accel: Fixed = Fixed(0.5)
+    player: Bool = true               # with the actions left, right, up, down; false: by dx and dy
+    dx: Int = 0
+    dy: Int = 0
+    facing: Int = 1
+
+    func ready(n: Node)
+    end
+
+    func process(n: Node, delta: Int)
+    end
+
+    func physics_process(n: Node)
+        x = self.dx
+        y = self.dy
+        if self.player
+            x = action_axis("left", "right")
+            y = action_axis("up", "down")
+        end
+        if x != 0
+            self.facing = x
+        end
+        if n.body != nil
+            accelerate_x(n, self.speed * x, self.accel)
+            accelerate_y(n, self.speed * y, self.accel)
+            n.move_and_slide()
+        else
+            n.x = n.x + Int(self.speed * x)
+            n.y = n.y + Int(self.speed * y)
+        end
+        if x != 0 or y != 0
+            play_facing(n, "walk", self.facing)
+        else
+            play_facing(n, "idle", self.facing)
+        end
+    end
+
+    func on_signal(n: Node, name: String, from: Node, data: Int)
+    end
+end
+
+# --- Bullet: goes straight; out at a wall (with a body) ---
+struct Bullet: Script
+    vx: Fixed = Fixed(4)
+    vy: Fixed = 0
+    destroy_on_wall: Bool = true
+
+    func ready(n: Node)
+    end
+
+    func process(n: Node, delta: Int)
+    end
+
+    func physics_process(n: Node)
+        move_node(n, self.vx, self.vy)
+        if n.body != nil and self.destroy_on_wall and (n.body.on_wall or n.body.on_floor or n.body.on_ceiling)
+            n.queue_free()
+        end
+    end
+
+    func on_signal(n: Node, name: String, from: Node, data: Int)
+    end
+end
+
+# --- Follow: goes towards another node (by path or group), stopping at a distance ---
+struct Follow: Script
+    target: String = "/Player"        # a path from the root ("/Level/Player") or "group:enemies"
+    speed: Fixed = Fixed(1)
+    distance: Int = 0                 # stops this close (pixels)
+    only_x: Bool = false              # follows in x only (a rival on a track, a side-view enemy)
+
+    func ready(n: Node)
+    end
+
+    func process(n: Node, delta: Int)
+    end
+
+    func physics_process(n: Node)
+        var t: Node = nil
+        if str_starts(self.target, "group:")
+            l = get_nodes_in_group(self.target[6:])
+            if l.length > 0
+                t = l[0]
+            end
+        else
+            t = n.get_node(self.target)
+        end
+        if t == nil
+            return
+        end
+        dx = t.global_x() - n.global_x()
+        dy = t.global_y() - n.global_y()
+        if self.only_x
+            dy = 0
+        end
+        mx = 0
+        my = 0
+        if dx > self.distance
+            mx = 1
+        elif dx < 0 - self.distance
+            mx = -1
+        end
+        if dy > self.distance
+            my = 1
+        elif dy < 0 - self.distance
+            my = -1
+        end
+        if n.body != nil and self.only_x
+            n.body.vx = self.speed * mx
+            n.move_and_slide()
+        else
+            move_node(n, self.speed * mx, self.speed * my)
+        end
+    end
+
+    func on_signal(n: Node, name: String, from: Node, data: Int)
+    end
+end
+
+# --- Patrol: walks one way, turns at walls and (with gravity) at the edge of the floor ---
+struct Patrol: Script
+    speed: Fixed = Fixed(0.75)
+    dir: Int = -1
+    gravity: Fixed = Fixed(0.35)      # 0: flies (turns only at walls)
+    turn_at_edges: Bool = true
+
+    func ready(n: Node)
+        if n.body == nil
+            n.body = BodyData()
+        end
+    end
+
+    func process(n: Node, delta: Int)
+    end
+
+    func physics_process(n: Node)
+        b = n.body
+        b.vx = self.speed * self.dir
+        if self.gravity > 0
+            apply_gravity(n, self.gravity, Fixed(6))
+        end
+        n.move_and_slide()
+        if b.on_wall
+            self.dir = 0 - self.dir
+        elif self.turn_at_edges and b.on_floor
+            fragua_box(n)
+            fx = fragua_bx - 1
+            if self.dir > 0
+                fx = fragua_bx + fragua_bw
+            end
+            if tile_at(fx, fragua_by + fragua_bh) == 0 and tile_at(fx, fragua_by + fragua_bh + 4) == 0
+                self.dir = 0 - self.dir
+            end
+        end
+        play_facing(n, "walk", self.dir)
+    end
+
+    func on_signal(n: Node, name: String, from: Node, data: Int)
+    end
+end
+
+# The world's rectangle for the behaviours below: the first tile map, or else the view
+func world_rect() -> Rect
+    t = fragua_tree
+    if t.maps.length > 0
+        m = t.maps[0]
+        return Rect(m.global_x(), m.global_y(), m.map.width * m.map.tile, m.map.height * m.map.tile)
+    end
+    return Rect(0, 0, t.view_w, t.view_h)
+end
+
+# --- BounceEdges: comes back from the edges of the world (Pong's ball, a bouncing enemy) ---
+struct BounceEdges: Script
+    vx: Fixed = Fixed(2)
+    vy: Fixed = Fixed(2)
+    left: Bool = true                 # which edges bounce
+    right: Bool = true
+    top: Bool = true
+    bottom: Bool = true
+
+    func ready(n: Node)
+    end
+
+    func process(n: Node, delta: Int)
+    end
+
+    func physics_process(n: Node)
+        move_node(n, self.vx, self.vy)
+        r = world_rect()
+        fragua_box(n)
+        if (self.left and fragua_bx < r.x and self.vx < 0) or (self.right and fragua_bx + fragua_bw > r.right() and self.vx > 0)
+            self.vx = 0 - self.vx
+            n.emit("bounced", 0)
+        end
+        if (self.top and fragua_by < r.y and self.vy < 0) or (self.bottom and fragua_by + fragua_bh > r.bottom() and self.vy > 0)
+            self.vy = 0 - self.vy
+            n.emit("bounced", 1)
+        end
+        if n.body != nil and n.body.on_wall
+            self.vx = 0 - self.vx
+        end
+        if n.body != nil and (n.body.on_floor or n.body.on_ceiling)
+            self.vy = 0 - self.vy
+        end
+    end
+
+    func on_signal(n: Node, name: String, from: Node, data: Int)
+    end
+end
+
+# --- Wrap: out of one side of the world, in by the other (Asteroids) ---
+struct Wrap: Script
+    margin: Int = 0
+
+    func ready(n: Node)
+    end
+
+    func process(n: Node, delta: Int)
+    end
+
+    func physics_process(n: Node)
+        r = world_rect()
+        gx = n.global_x()
+        gy = n.global_y()
+        if gx < r.x - self.margin
+            n.x = n.x + r.w + self.margin * 2
+        elif gx > r.right() + self.margin
+            n.x = n.x - r.w - self.margin * 2
+        end
+        if gy < r.y - self.margin
+            n.y = n.y + r.h + self.margin * 2
+        elif gy > r.bottom() + self.margin
+            n.y = n.y - r.h - self.margin * 2
+        end
+    end
+
+    func on_signal(n: Node, name: String, from: Node, data: Int)
+    end
+end
+
+# --- DestroyOffscreen: freed when it goes this far out of the world ---
+struct DestroyOffscreen: Script
+    margin: Int = 32
+
+    func ready(n: Node)
+    end
+
+    func process(n: Node, delta: Int)
+    end
+
+    func physics_process(n: Node)
+        r = world_rect()
+        gx = n.global_x()
+        gy = n.global_y()
+        if gx < r.x - self.margin or gy < r.y - self.margin or gx > r.right() + self.margin or gy > r.bottom() + self.margin
+            n.emit("left_world", 0)
+            n.queue_free()
+        end
+    end
+
+    func on_signal(n: Node, name: String, from: Node, data: Int)
+    end
+end
+
+# --- Health: life points. Hears "damage" (data: how much) and "heal"; blinks while invulnerable ---
+struct Health: Script
+    hp: Int = 3
+    max_hp: Int = 3
+    invulnerable: Int = 50            # video frames without more damage after a hit
+    destroy: Bool = true              # freed when it dies
+    var_name: String = ""             # a game variable that shows the life ("lives")
+    left: Int = 0
+
+    func ready(n: Node)
+        if self.var_name != ""
+            game_set(self.var_name, self.hp)
+        end
+    end
+
+    func process(n: Node, delta: Int)
+        if self.left > 0
+            self.left = self.left - delta
+            n.visible = self.left <= 0 or (self.left / 4) % 2 == 0
+        end
+    end
+
+    func physics_process(n: Node)
+    end
+
+    func on_signal(n: Node, name: String, from: Node, data: Int)
+        if name == "damage" and self.left <= 0 and self.hp > 0
+            self.hp = self.hp - data
+            self.left = self.invulnerable
+            n.emit("hurt", self.hp)
+            if self.hp <= 0
+                self.hp = 0
+                n.emit("died", 0)
+                if self.destroy
+                    n.queue_free()
+                end
+            end
+        elif name == "heal"
+            self.hp = self.hp + data
+            if self.hp > self.max_hp
+                self.hp = self.max_hp
+            end
+        end
+        if self.var_name != ""
+            game_set(self.var_name, self.hp)
+        end
+    end
+end
+
+# --- Damage: on touching a node of the group (as an area, or a body touching it) sends it "damage" ---
+struct Damage: Script
+    group: String = "player"
+    amount: Int = 1
+    destroy_self: Bool = false        # a bullet goes when it hits
+
+    func ready(n: Node)
+    end
+
+    func process(n: Node, delta: Int)
+    end
+
+    func physics_process(n: Node)
+        if n.area != nil
+            return                    # an area hears body_entered
+        end
+        for o in get_nodes_in_group(self.group)
+            if o != n and not o.dead and n.overlaps(o)
+                send_signal(o, "damage", n, self.amount)
+                if self.destroy_self
+                    n.queue_free()
+                end
+            end
+        end
+    end
+
+    func on_signal(n: Node, name: String, from: Node, data: Int)
+        if name == "body_entered" or name == "area_entered"
+            o = node_by_id(data)
+            if o != nil and o.is_in_group(self.group)
+                send_signal(o, "damage", n, self.amount)
+                if self.destroy_self
+                    n.queue_free()
+                end
+            end
+        end
+    end
+end
+
+# --- Pickup: a node of the group touches it: adds to a game variable, sounds and goes ---
+struct Pickup: Script
+    group: String = "player"
+    var_name: String = "score"
+    amount: Int = 1
+    sound: String = ""                # an 8SVX file
+    picked: Bool = false
+
+    func ready(n: Node)
+        if self.sound != ""
+            sound_cached(self.sound)
+        end
+    end
+
+    func process(n: Node, delta: Int)
+    end
+
+    func physics_process(n: Node)
+        if n.area != nil or self.picked
+            return
+        end
+        for o in get_nodes_in_group(self.group)
+            if not self.picked and n.overlaps(o)
+                self.take(n, o)
+            end
+        end
+    end
+
+    func take(n: Node, o: Node)
+        self.picked = true
+        if self.var_name != ""
+            game_add(self.var_name, self.amount)
+        end
+        if self.sound != ""
+            play_sound(self.sound)
+        end
+        n.emit("picked", o.id)
+        n.queue_free()
+    end
+
+    func on_signal(n: Node, name: String, from: Node, data: Int)
+        if name == "body_entered" and not self.picked
+            o = node_by_id(data)
+            if o != nil and o.is_in_group(self.group)
+                self.take(n, o)
+            end
+        end
+    end
+end
+
+# --- Draggable: the mouse moves it while the left button is held on it ---
+struct Draggable: Script
+    dragging: Bool = false
+    ox: Int = 0
+    oy: Int = 0
+
+    func ready(n: Node)
+    end
+
+    func process(n: Node, delta: Int)
+        mx = mouse_x() - fragua_tree.view_x + fragua_tree.cam_x
+        my = mouse_y() - fragua_tree.view_y + fragua_tree.cam_y
+        if mouse_button(0)
+            if not self.dragging
+                fragua_box(n)
+                if mx >= fragua_bx and my >= fragua_by and mx < fragua_bx + fragua_bw and my < fragua_by + fragua_bh
+                    self.dragging = true
+                    self.ox = n.global_x() - mx
+                    self.oy = n.global_y() - my
+                    n.emit("drag_started", 0)
+                end
+            end
+            if self.dragging
+                n.set_global_pos(mx + self.ox, my + self.oy)
+            end
+        elif self.dragging
+            self.dragging = false
+            n.emit("dropped", 0)
+        end
+    end
+
+    func physics_process(n: Node)
+    end
+
+    func on_signal(n: Node, name: String, from: Node, data: Int)
+    end
+end
+
+# --- Blink: shows and hides the node (for a while, or always) ---
+struct Blink: Script
+    period: Int = 8                   # video frames shown, and as many hidden
+    duration: Int = 0                 # video frames blinking (0: always)
+    t: Int = 0
+
+    func ready(n: Node)
+    end
+
+    func process(n: Node, delta: Int)
+        if self.duration > 0 and self.t >= self.duration
+            return
+        end
+        self.t = self.t + delta
+        n.visible = (self.t / self.period) % 2 == 0
+        if self.duration > 0 and self.t >= self.duration
+            n.visible = true
+            n.emit("blink_finished", 0)
+        end
+    end
+
+    func physics_process(n: Node)
+    end
+
+    func on_signal(n: Node, name: String, from: Node, data: Int)
+    end
+end
