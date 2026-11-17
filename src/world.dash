@@ -180,6 +180,33 @@ func map_pixel_height(map: Node) -> Int
     return map.map.height * map.map.tile
 end
 
+# --- isometric ---
+# With set_isometric(true) the world is a ground plane seen at an angle: a world point x, y (in pixels of the
+# plane, where bodies move and collide as always) goes on the screen at x - y across and (x + y) / 2 down, minus
+# its elevation; tile maps are drawn with diamond tiles (frames twice as wide as high) and the nodes are drawn by
+# depth (x + y), so what is nearer covers what is behind. Sprites hang from their offset: put it at the feet
+# (offset -w / 2, -h for a sprite whose feet are at the bottom middle).
+
+func set_isometric(on: Bool)
+    fragua_tree.iso = on
+    fragua_tree.bg_dirty = true
+end
+
+# Where the world's 0, 0 goes across (a map of h rows needs h * tile so that nothing is on the left of 0)
+func set_iso_origin(x0: Int)
+    fragua_tree.iso_x0 = x0
+    fragua_tree.bg_dirty = true
+end
+
+# A world point on the projected plane (before the camera)
+func iso_x(wx: Int, wy: Int) -> Int
+    return wx - wy + fragua_tree.iso_x0
+end
+
+func iso_y(wx: Int, wy: Int) -> Int
+    return (wx + wy) / 2
+end
+
 # A world point on the screen
 func screen_x(wx: Int) -> Int
     return wx - fragua_tree.cam_x + fragua_tree.view_x
@@ -187,6 +214,63 @@ end
 
 func screen_y(wy: Int) -> Int
     return wy - fragua_tree.cam_y + fragua_tree.view_y
+end
+
+# An isometric map: each cell a frame of its tileset, from the back to the front, whole cells only
+func fragua_draw_iso_map(n: Node)
+    t = fragua_tree
+    m = n.map
+    ts = m.tile
+    fw = m.tileset.width
+    fh = m.tileset.height
+    ox = n.global_x()
+    oy = n.global_y()
+    l = 0
+    while l < tilemap_layers(m.id)
+        if tilemap_layer_type(m.id, l) == 0 and tilemap_layer_visible(m.id, l)
+            r = 0
+            while r < m.height
+                c = 0
+                while c < m.width
+                    v = tilemap_get(m.id, l, c, r) & 0x3FFF
+                    if v > 0
+                        wx = ox + c * ts
+                        wy = oy + r * ts
+                        sx = iso_x(wx, wy) - fw / 2 - t.cam_x + t.view_x
+                        sy = iso_y(wx, wy) - t.cam_y + t.view_y
+                        if sx >= t.view_x and sy >= t.view_y and sx + fw <= t.view_x + t.view_w and sy + fh <= t.view_y + t.view_h
+                            bob_paste(m.tileset.id, v - 1, sx, sy)
+                        end
+                    end
+                    c = c + 1
+                end
+                r = r + 1
+            end
+        end
+        l = l + 1
+    end
+end
+
+# Isometric: the drawing list by z_index and then depth (x + y); it hardly changes from a frame to the next, so
+# an insertion sort is cheap
+func fragua_iso_sort()
+    l = fragua_tree.visuals
+    i = 0
+    while i < l.length
+        l[i].depth = l[i].z_index * 65536 + l[i].global_x() + l[i].global_y()
+        i = i + 1
+    end
+    i = 1
+    while i < l.length
+        j = i
+        while j > 0 and l[j - 1].depth > l[j].depth
+            tmp = l[j]
+            l[j] = l[j - 1]
+            l[j - 1] = tmp
+            j = j - 1
+        end
+        i = i + 1
+    end
 end
 
 # --- the camera: a screen at a time ---
@@ -203,6 +287,11 @@ func fragua_camera_update()
     fragua_box(tg)
     px = fragua_bx + fragua_bw / 2
     py = fragua_by + fragua_bh / 2
+    if t.iso
+        qx = iso_x(px, py)
+        py = iso_y(px, py)
+        px = qx
+    end
     cx = c.cx
     cy = c.cy
     while px < cx and cx > 0
@@ -301,7 +390,11 @@ func fragua_background()
     end
     for n in t.maps
         if fragua_shown(n)
-            fragua_draw_map(n)
+            if n.map.iso or t.iso
+                fragua_draw_iso_map(n)
+            else
+                fragua_draw_map(n)
+            end
         end
     end
     for n in t.rects
@@ -377,6 +470,16 @@ func fragua_labels()
     end
 end
 
+func fragua_parent_elevation(n: Node) -> Int
+    e = 0
+    var p: Node = n.parent
+    while p != nil
+        e = e + p.elevation
+        p = p.parent
+    end
+    return e
+end
+
 # Shown: it and all its parents are visible
 func fragua_shown(n: Node) -> Bool
     var p: Node = n
@@ -397,6 +500,11 @@ func fragua_draw_node(n: Node)
     x = n.global_x()
     y = n.global_y()
     if not n.ui
+        if t.iso
+            px = iso_x(x, y)
+            y = iso_y(x, y) - n.elevation - fragua_parent_elevation(n)
+            x = px
+        end
         x = x - t.cam_x + t.view_x
         y = y - t.cam_y + t.view_y
     end
@@ -457,6 +565,9 @@ func fragua_draw()
     if t.bg_dirty
         fragua_background()
         s.begin()
+    end
+    if t.iso
+        fragua_iso_sort()
     end
     fragua_labels()
     i = 0

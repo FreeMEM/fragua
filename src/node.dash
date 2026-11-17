@@ -104,6 +104,7 @@ struct MapData
     id: Int = -1                  # the tile map of Dash
     tileset: Image = nil
     collision: Int = -1           # the collision layer (type 1 in Forja's editor), or -1
+    iso: Bool = false             # isometric: diamond tiles (the tileset's frames twice as wide as high)
     slopes: Bool = false          # its collision layer has slopes
     specials: Bool = false        # and ladders or damage
     tile: Int = 16
@@ -187,6 +188,8 @@ struct Node
     x: Int = 0                    # from the parent
     y: Int = 0
     z_index: Int = 0                   # drawing order: bigger, in front
+    elevation: Int = 0            # isometric: pixels above the ground (a jump, a floating thing)
+    depth: Int = 0                # isometric: the order of drawing worked out each frame (x + y)
     visible: Bool = true
     ui: Bool = false              # in screen coordinates: the camera does not move it (score, menus)
     id: Int = 0

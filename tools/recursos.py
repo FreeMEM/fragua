@@ -429,20 +429,20 @@ def iso(dir_):
         "....BBBBBBBB....", "....HHH..HHH....", "....HHH..HHH....", "....HHH..HHH....", "...HHHH..HHHH...",
     ], {"R": 15, "S": 16, "B": 17, "H": 8})
     ilbm(os.path.join(dir_, "hero.iff"), pj, PALETA, 5, 16, 0)
-    ancho = alto = 12
+    ancho = alto = 9
     suelo = [0] * (ancho * alto)
     choques = [0] * (ancho * alto)
     for y in range(alto):
         for x in range(ancho):
             v = 1
-            if 2 <= x <= 4 and 6 <= y <= 9:
+            if 1 <= x <= 3 and 5 <= y <= 7:
                 v = 2
                 choques[y * ancho + x] = 1
-            elif x in (5, 6) and 5 <= y <= 10:
+            elif x == 5 and 3 <= y <= 8:
                 v = 3
             suelo[y * ancho + x] = v
     objetos = [(1 * 16, 1 * 16, "player", "Heroe", "")]
-    for (x, y) in ((8, 2), (9, 2), (8, 6), (3, 3), (10, 9)):
+    for (x, y) in ((6, 1), (7, 1), (7, 5), (3, 2), (2, 8)):
         objetos.append((x * 16, y * 16, "block", "Bloque", ""))
     fmap(os.path.join(dir_, "iso.fmap"), ancho, alto, 16, "isotiles.iff",
          [("suelo", 0, suelo), ("choques", 1, choques)], objetos)

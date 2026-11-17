@@ -1,0 +1,89 @@
+# An isometric room with Fragua's nodes: a map of diamond tiles (iso.fmap, with water you cannot walk on), a hero
+# that walks in eight directions (the EightWay behaviour) and blocks that it goes behind and in front of (drawn by
+# depth). The arrows move along the ground's axes. Esc quits. With ENV:FRAGUA_DEMO it walks by itself for 300
+# frames and prints what it measured.
+
+import "../../fragua.dash"
+
+# The demo: walks around the blocks
+struct Walker: Script
+    t: Int = 0
+
+    func ready(n: Node)
+    end
+
+    func process(n: Node, delta: Int)
+        self.t = self.t + delta
+        k = (self.t / 60) % 4
+        action_force("right", k == 0)
+        action_force("down", k == 1)
+        action_force("left", k == 2)
+        action_force("up", k == 3)
+        if self.t >= 300
+            quit()
+        end
+    end
+
+    func physics_process(n: Node)
+    end
+
+    func on_signal(n: Node, name: String, from: Node, data: Int)
+    end
+end
+
+func new_block(x: Int, y: Int) -> Node
+    b = new_static_body2d("Block", x, y)
+    spr = new_sprite2d("Sprite", image_cached("block.iff"), 0, 0)
+    spr.sprite.ox = -16
+    spr.sprite.oy = -24
+    b.add_child(spr)
+    b.add_child(new_shape_rect("Shape", -8, -8, 16, 16))
+    return b
+end
+
+Main
+    demo = env_get("FRAGUA_DEMO") != ""
+    s = open_screen(320, 256, 5, "Iso")
+    if s == nil
+        Print "iso: the screen does not open"
+    else
+        s.palette("isotiles.iff", 0)
+        set_background_color(4)
+        set_isometric(true)
+        root = new_node("Room")
+        map = new_tilemap("Map", "iso.fmap")
+        if map == nil
+            Print "iso: iso.fmap does not load"
+        else
+            set_iso_origin(map_pixel_height(map) + 16)
+            root.add_child(map)
+            for o in map_objects(map, "block")
+                root.add_child(new_block(map_object_x(map, o) + 8, map_object_y(map, o) + 8))
+            end
+            pl = map_objects(map, "player")
+            hero = new_body2d("Hero", map_object_x(map, pl[0]) + 8, map_object_y(map, pl[0]) + 8)
+            spr = new_sprite2d("Sprite", image_cached("hero.iff"), 0, 0)
+            spr.sprite.ox = -8
+            spr.sprite.oy = -14
+            hero.add_child(spr)
+            hero.add_child(new_shape_rect("Shape", -4, -4, 8, 8))
+            hero.body.mask = 1
+            mover = EightWay()
+            mover.speed = Fixed(1.5)
+            hero.add_behavior(mover)
+            root.add_child(hero)
+            set_view(0, 16, 320, 240)
+            if demo
+                w = new_node("Walker")
+                w.script = Walker()
+                root.add_child(w)
+            end
+            run(root)
+            t = fragua_tree
+            if demo
+                Print "iso: #{t.frames} frames, lost #{t.lost}, work #{t.work / t.frames} ms a frame (at most #{t.worst}), hero at #{hero.x}, #{hero.y}"
+            end
+        end
+        fragua_close_screen(s)
+    end
+end

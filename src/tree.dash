@@ -63,6 +63,8 @@ struct Tree
     cm_x: Int = 0
     cm_y: Int = 0
     cm_slopes: Bool = false
+    iso: Bool = false             # isometric projection (set_isometric)
+    iso_x0: Int = 0               # where the world's 0, 0 goes on the projected plane
     rate: Int = 50                # frames a second: 50 (60 in NTSC), or 25 (30) for heavier games
     active_margin: Int = 64       # with a camera, nodes further than this out of the view stand still (-1: never)             # out of the view (-1: as the background)
     work: Int = 0                 # ms of work, all frames (time_ms before present)

@@ -13,7 +13,7 @@ aqui=$(cd "$(dirname "$0")/.." && pwd)
 nombre=$(basename "$prog" .dash)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-(cd "$dir" && "$dash/dash" ${GCC:+--gcc} ${PERFIL:+--profile} "$prog" -o "$tmp/Juego" >"$tmp/compilar.txt" 2>&1) || { cat "$tmp/compilar.txt"; exit 1; }
+(cd "$dir" && "$dash/dash" ${GCC:+--gcc} ${PERFIL:+--profile} ${MEMCHECK:+--memcheck} "$prog" -o "$tmp/Juego" >"$tmp/compilar.txt" 2>&1) || { cat "$tmp/compilar.txt"; exit 1; }
 cp -r "${SISTEMA:-$HOME/.cache/dash-emu/sys31}" "$tmp/sys"
 chmod -R u+w "$tmp/sys"
 mkdir -p "$tmp/sys/S"
@@ -24,4 +24,4 @@ caps=${CAPTURAS:-$aqui/build}
 mkdir -p "$caps"
 shots=""
 for s in "$@"; do shots="$shots --screenshot $s $caps/$nombre-$s.png"; done
-cd "$dash" && python3 tools/emu_run.py --timeout ${TIEMPO:-240} ${KEEP:+--keep $KEEP} $maquina --system "$tmp/sys" --cd "$dir" ${REAL:+--set uae_cpu_speed=real} $shots "$tmp/Juego" 2>&1 | grep -E "$nombre:|RC=|rror|TIMEOUT|FALLO|nil|perfil"
+cd "$dash" && python3 tools/emu_run.py --timeout ${TIEMPO:-240} ${KEEP:+--keep $KEEP} $maquina --system "$tmp/sys" --cd "$dir" ${REAL:+--set uae_cpu_speed=real} $shots "$tmp/Juego" 2>&1 | grep -E "$nombre:|RC=|rror|TIMEOUT|FALLO|nil|perfil|memcheck"
